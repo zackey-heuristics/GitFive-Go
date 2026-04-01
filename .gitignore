@@ -1,8 +1,31 @@
-.google-cookie
-__pycache__/
-lib/__pycache__/
-gitfive/lib/__pycache__/
-.DS_STORE
-build/
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Go build cache
+*.o
+*.a
+
+# Vendor (if used)
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dist
 dist/
-gitfive.egg-info/
