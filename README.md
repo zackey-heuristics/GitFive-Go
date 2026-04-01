@@ -101,10 +101,6 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o gitfive-go-windows-amd64.exe
 
 - Original [GitFive](https://github.com/mxrch/GitFive) by [mxrch](https://github.com/mxrch)
 
-## Disclaimer
-
-This tool is for educational purposes only. The authors are not responsible for its use.
-
 ## License
 
 [MPL-2.0](LICENSE.md)
