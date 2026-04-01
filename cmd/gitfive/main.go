@@ -13,7 +13,7 @@ import (
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "gitfive",
+		Use:   "gitfive-go",
 		Short: "Track down GitHub users",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			ui.ShowBanner()
