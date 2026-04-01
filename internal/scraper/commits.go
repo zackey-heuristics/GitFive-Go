@@ -66,7 +66,7 @@ func ScrapeCommits(ctx context.Context, client *httpclient.Client, owner, repoNa
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	bodyHTML := ReadAll(resp)
 
 	if strings.Contains(strings.ToLower(bodyHTML), "this repository is empty") {
@@ -117,7 +117,7 @@ func ScrapeCommits(ctx context.Context, client *httpclient.Client, owner, repoNa
 				if err != nil {
 					return err
 				}
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				if resp.StatusCode == 429 {
 					return fmt.Errorf("rate-limit detected on commits scrape")

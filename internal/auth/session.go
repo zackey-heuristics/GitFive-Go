@@ -17,7 +17,7 @@ func CheckSession(ctx context.Context, client *httpclient.Client) (bool, error) 
 	if err != nil {
 		return false, err
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	return resp.StatusCode == http.StatusOK, nil
 }
 
