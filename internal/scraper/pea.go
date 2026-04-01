@@ -81,7 +81,7 @@ func IsFollowedOrFollowingALot(ctx context.Context, client *httpclient.Client, u
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -106,7 +106,7 @@ func HasManyStarsOrRepos(ctx context.Context, client *httpclient.Client, usernam
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -182,7 +182,7 @@ func launchRepoQueries(ctx context.Context, client *httpclient.Client, username 
 				if err != nil {
 					return err
 				}
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 				pageDoc, err = goquery.NewDocumentFromReader(resp.Body)
 				if err != nil {
 					return err
@@ -217,7 +217,7 @@ func extractFirstStargazers(ctx context.Context, client *httpclient.Client, user
 	if err != nil {
 		return stargazers, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {

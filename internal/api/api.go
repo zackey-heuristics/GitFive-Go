@@ -79,7 +79,7 @@ func (api *Interface) Query(ctx context.Context, path string, connType string) (
 		}
 
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			return nil, err
 		}
@@ -132,7 +132,7 @@ func (api *Interface) verifyRateLimit(ctx context.Context, resource string, clie
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var data struct {
 		Resources map[string]struct {

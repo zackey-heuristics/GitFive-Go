@@ -40,7 +40,7 @@ func FetchReposList(ctx context.Context, client *httpclient.Client, target *mode
 			if err != nil {
 				return err
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			doc, err := goquery.NewDocumentFromReader(resp.Body)
 			if err != nil {
