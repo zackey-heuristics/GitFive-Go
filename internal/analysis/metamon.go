@@ -58,7 +58,9 @@ func StartMetamon(ctx context.Context, client *httpclient.Client, owner, token s
 
 	// Create initial commit
 	dummyFile := filepath.Join(tmpDir, "README.md")
-	os.WriteFile(dummyFile, []byte("temp"), 0o644)
+	if err := os.WriteFile(dummyFile, []byte("temp"), 0o644); err != nil {
+		return tempRepoName, nil, err
+	}
 	if err := gitExec(ctx, tmpDir, "add", "."); err != nil {
 		return tempRepoName, nil, err
 	}

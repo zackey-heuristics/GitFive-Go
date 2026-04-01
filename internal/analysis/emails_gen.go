@@ -47,7 +47,7 @@ func GenerateEmails(target *models.Target, spoofedEmails models.StringSet,
 		}
 	}
 	for _, entry := range target.InternalContribs.NoGitHub {
-		if !(util.IsLocalDomain(entry.Domain) && isLocalName(entry.Handle)) {
+		if !util.IsLocalDomain(entry.Domain) || !isLocalName(entry.Handle) {
 			usernames.Add(strings.ToLower(entry.Handle))
 			usernames.Add(strings.ToLower(strings.SplitN(entry.Handle, "+", 2)[0]))
 		}
@@ -61,7 +61,7 @@ func GenerateEmails(target *models.Target, spoofedEmails models.StringSet,
 
 	// Enrich from ext contribs
 	for _, entry := range target.ExtContribs {
-		if !(util.IsLocalDomain(entry.Domain) && isLocalName(entry.Handle)) {
+		if !util.IsLocalDomain(entry.Domain) || !isLocalName(entry.Handle) {
 			usernames.Add(strings.ToLower(entry.Handle))
 			usernames.Add(strings.ToLower(strings.SplitN(entry.Handle, "+", 2)[0]))
 		}

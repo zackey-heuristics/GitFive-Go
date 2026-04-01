@@ -83,8 +83,8 @@ func (c *Credentials) AreLoaded() bool {
 
 // Clean removes credential and session files from disk.
 func (c *Credentials) Clean() error {
-	os.Remove(c.credsPath)
-	os.Remove(c.sessionPath)
+	_ = os.Remove(c.credsPath)
+	_ = os.Remove(c.sessionPath)
 	return nil
 }
 

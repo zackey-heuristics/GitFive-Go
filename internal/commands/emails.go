@@ -29,7 +29,7 @@ func NewEmailsCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("couldn't open file: %w", err)
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 
 			var emails []string
 			scanner := bufio.NewScanner(f)
@@ -75,7 +75,7 @@ func NewEmailsCmd() *cobra.Command {
 
 			// Cleanup
 			if tempRepoName != "" {
-				scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password)
+				_ = scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password)
 			}
 
 			return nil

@@ -23,7 +23,7 @@ func NewLoginCmd() *cobra.Command {
 			}
 
 			if clean {
-				creds.Clean()
+				_ = creds.Clean()
 				fmt.Println("[+] Credentials and session files deleted!")
 				return nil
 			}
@@ -40,7 +40,7 @@ func NewLoginCmd() *cobra.Command {
 				fmt.Println("[+] Creds are working!")
 				fmt.Print("Do you want to re-login anyway? (Y/n): ")
 				var choice string
-				fmt.Scanln(&choice)
+				_, _ = fmt.Scanln(&choice)
 				if choice == "" || choice == "y" || choice == "Y" {
 					fmt.Println()
 					creds2, _ := auth.NewCredentials()

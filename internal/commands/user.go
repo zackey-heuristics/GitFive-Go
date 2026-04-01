@@ -176,7 +176,7 @@ func NewUserCmd() *cobra.Command {
 							}
 						}
 					}
-					scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password)
+					_ = scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password)
 				}
 			}
 
@@ -262,7 +262,7 @@ func NewUserCmd() *cobra.Command {
 
 			// Cleanup
 			if lastTempRepo != "" {
-				scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, lastTempRepo, r.Creds.Password)
+				_ = scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, lastTempRepo, r.Creds.Password)
 				fmt.Println("[+] Deleted the remote repo")
 			}
 
@@ -296,7 +296,7 @@ func NewUserCmd() *cobra.Command {
 			}
 
 			r.TMPrinter.Out("Deleting temp folder...")
-			util.DeleteTmpDir()
+			_ = util.DeleteTmpDir()
 			r.TMPrinter.Clear()
 
 			return nil
