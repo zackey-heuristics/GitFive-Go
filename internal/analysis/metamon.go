@@ -74,7 +74,7 @@ func StartMetamon(ctx context.Context, client *httpclient.Client, owner, token s
 
 	for _, email := range emails {
 		// Write a unique file for each commit
-		os.WriteFile(dummyFile, []byte(email), 0o644)
+		_ = os.WriteFile(dummyFile, []byte(email), 0o644)
 		if err := gitExec(ctx, tmpDir, "add", "."); err != nil {
 			continue
 		}
@@ -97,9 +97,9 @@ func StartMetamon(ctx context.Context, client *httpclient.Client, owner, token s
 			continue
 		}
 		emailsIndex[strings.TrimSpace(hash)] = email
-		bar.Add(1)
+		_ = bar.Add(1)
 	}
-	bar.Finish()
+	_ = bar.Finish()
 
 	// Rename branch to mirage and push
 	if err := gitExec(ctx, tmpDir, "branch", "-M", "mirage"); err != nil {

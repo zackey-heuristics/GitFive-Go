@@ -142,7 +142,7 @@ func XrayAnalyze(ctx context.Context, token, targetUsername string, targetID int
 			}
 			mu.Lock()
 			results = append(results, result)
-			bar.Add(1)
+			_ = bar.Add(1)
 			mu.Unlock()
 			return nil
 		})
@@ -151,7 +151,7 @@ func XrayAnalyze(ctx context.Context, token, targetUsername string, targetID int
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	bar.Finish()
+	_ = bar.Finish()
 	return results, nil
 }
 
