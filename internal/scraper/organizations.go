@@ -142,7 +142,7 @@ func fetchOrg(ctx context.Context, client *httpclient.Client, orgName string) (O
 	if err != nil {
 		return org, err
 	}
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	doc2, _ := goquery.NewDocumentFromReader(resp2.Body)
 
 	ghPages := GitHubPagesInfo{}

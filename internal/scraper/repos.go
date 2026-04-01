@@ -50,7 +50,7 @@ func FetchReposList(ctx context.Context, client *httpclient.Client, target *mode
 			pageRepos := parseReposPage(doc, target.Username)
 			mu.Lock()
 			repos = append(repos, pageRepos...)
-			bar.Add(len(pageRepos))
+			_ = bar.Add(len(pageRepos))
 			mu.Unlock()
 			return nil
 		})
@@ -59,7 +59,7 @@ func FetchReposList(ctx context.Context, client *httpclient.Client, target *mode
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	bar.Finish()
+	_ = bar.Finish()
 	return repos, nil
 }
 
