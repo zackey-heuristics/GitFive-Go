@@ -4,13 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"strings"
 	"sync"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 
@@ -39,35 +36,37 @@ func ScrapeCommits(ctx context.Context, client *httpclient.Client, owner, repoNa
 	out := make(map[string]*CommitAccount)
 	var mu sync.Mutex
 
-	// Get repo page to find last hash and commit count
-	resp, err := client.Get(ctx, fmt.Sprintf("https://github.com/%s/%s", owner, repoName))
+	// Get the mirage branch commits page to find last hash and commit count.
+	// We use the commits page directly (not the repo root) because metamon
+	// pushes to the "mirage" branch which may not be the default branch.
+	resp, err := client.Get(ctx, fmt.Sprintf("https://github.com/%s/%s/commits/mirage", owner, repoName))
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	bodyHTML, _ := doc.Html()
+	bodyHTML := ReadAll(resp)
 
 	// Check if empty
-	empty := false
-	doc.Find("h3").Each(func(_ int, s *goquery.Selection) {
-		if strings.Contains(strings.ToLower(s.Text()), "this repository is empty") {
-			empty = true
-		}
-	})
-	if empty {
+	if strings.Contains(strings.ToLower(bodyHTML), "this repository is empty") {
 		return nil, fmt.Errorf("empty repository")
 	}
 
-	// Get last hash
+	// Get last hash from the commits page
 	oidMatches := currentOidRegex.FindStringSubmatch(bodyHTML)
 	if len(oidMatches) < 2 {
-		return nil, fmt.Errorf("couldn't fetch last hash")
+		// Fallback: try the repo root page
+		resp2, err := client.Get(ctx, fmt.Sprintf("https://github.com/%s/%s", owner, repoName))
+		if err != nil {
+			return nil, fmt.Errorf("couldn't fetch last hash")
+		}
+		defer resp2.Body.Close()
+		bodyHTML2 := ReadAll(resp2)
+		oidMatches = currentOidRegex.FindStringSubmatch(bodyHTML2)
+		if len(oidMatches) < 2 {
+			return nil, fmt.Errorf("couldn't fetch last hash")
+		}
+		bodyHTML = bodyHTML2
 	}
 	lastHash := oidMatches[1]
 
@@ -136,7 +135,7 @@ func fetchCommitsPage(ctx context.Context, client *httpclient.Client, owner, rep
 		return fmt.Errorf("rate-limit detected on commits scrape")
 	}
 
-	bodyHTML := readBody(resp)
+	bodyHTML := ReadAll(resp)
 	matches := embeddedDataRegex.FindStringSubmatch(bodyHTML)
 	if len(matches) < 2 {
 		return nil
@@ -219,7 +218,3 @@ func fetchCommitsPage(ctx context.Context, client *httpclient.Client, owner, rep
 	return nil
 }
 
-func readBody(resp *http.Response) string {
-	data, _ := io.ReadAll(resp.Body)
-	return string(data)
-}
