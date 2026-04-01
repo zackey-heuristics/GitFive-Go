@@ -44,7 +44,7 @@ func TestParseReposPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, _ := goquery.NewDocumentFromReader(resp.Body)
 	repos := parseReposPage(doc, "testuser")
