@@ -12,8 +12,6 @@ import (
 
 // NewEmailCmd creates the "email" subcommand for reverse email lookup.
 func NewEmailCmd() *cobra.Command {
-	var jsonFile string
-
 	cmd := &cobra.Command{
 		Use:   "email <email_address>",
 		Short: "Track down a GitHub user by email address",
@@ -57,11 +55,9 @@ func NewEmailCmd() *cobra.Command {
 				scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password)
 			}
 
-			_ = jsonFile // TODO: JSON export for email command
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&jsonFile, "json", "", "File to write the JSON output to")
 	return cmd
 }

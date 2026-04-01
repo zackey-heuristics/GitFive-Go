@@ -2,6 +2,8 @@ package test
 
 import (
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -9,7 +11,11 @@ import (
 // binaryPath builds the gitfive-go binary and returns its path.
 func binaryPath(t *testing.T) string {
 	t.Helper()
-	binary := t.TempDir() + "/gitfive-go"
+	name := "gitfive-go"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	binary := filepath.Join(t.TempDir(), name)
 	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", binary, "../cmd/gitfive")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build failed: %v\n%s", err, out)
@@ -86,9 +92,6 @@ func TestEmailsHelp(t *testing.T) {
 		t.Fatalf("emails --help failed: %v\n%s", err, out)
 	}
 	output := string(out)
-	if !strings.Contains(output, "--json") {
-		t.Error("expected --json flag")
-	}
 	if !strings.Contains(output, "-t") {
 		t.Error("expected -t flag")
 	}

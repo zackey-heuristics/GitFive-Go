@@ -130,7 +130,7 @@ func fetchOrg(ctx context.Context, client *httpclient.Client, orgName string) (O
 	doc1, _ := goquery.NewDocumentFromReader(resp1.Body)
 
 	repoWebsiteLink := strings.TrimSpace(doc1.Find(`a[role="link"]`).Text())
-	repoWebsiteDomains := util.DetectCustomDomain(websiteLink)
+	repoWebsiteDomains := util.DetectCustomDomain(repoWebsiteLink)
 	repoGHPagesHosted := false
 	if len(repoWebsiteDomains) > 0 {
 		repoGHPagesHosted = util.IsGHPagesHosted(repoWebsiteDomains[len(repoWebsiteDomains)-1])

@@ -14,6 +14,9 @@ import (
 	"github.com/zackey-heuristics/gitfive-go/internal/models"
 )
 
+// Note: FetchReposList requires URL injection to test properly.
+// parseReposPage is tested directly below as it contains the core logic.
+
 const reposHTML = `<html><body>
 <div id="user-repositories-list">
   <li class="source public">
@@ -29,24 +32,6 @@ const reposHTML = `<html><body>
 </ul>
 </div>
 </body></html>`
-
-func TestFetchReposList(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, reposHTML)
-	}))
-	defer srv.Close()
-
-	client := httpclient.New()
-	target := &models.Target{
-		Username:      "testuser",
-		NbPublicRepos: 2,
-	}
-
-	// Override: patch the URL by wrapping (we test parseReposPage directly instead)
-	_ = srv
-	_ = client
-	_ = target
-}
 
 func TestParseReposPage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

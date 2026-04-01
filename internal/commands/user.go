@@ -43,7 +43,9 @@ func NewUserCmd() *cobra.Command {
 			}
 
 			var profile map[string]interface{}
-			json.Unmarshal(data, &profile)
+			if err := json.Unmarshal(data, &profile); err != nil {
+				return fmt.Errorf("failed to parse user profile: %w", err)
+			}
 			if msg, _ := profile["message"].(string); msg == "Not Found" {
 				return fmt.Errorf("user %q not found", username)
 			}
@@ -124,7 +126,7 @@ func NewUserCmd() *cobra.Command {
 
 			// Company domain
 			if r.Target.Company != "" {
-				companyDomains := analysis.GuessCustomDomain(r.Target)
+				companyDomains := analysis.GuessCustomDomain(ctx, r.Client, r.Target)
 				for d := range companyDomains {
 					for _, cd := range util.DetectCustomDomain(d) {
 						r.Target.Domains.Add(cd)
