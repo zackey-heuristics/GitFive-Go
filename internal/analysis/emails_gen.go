@@ -137,8 +137,8 @@ func GenerateEmails(target *models.Target, spoofedEmails models.StringSet,
 				if reverse {
 					firstPos, secondPos = np.last, np.first
 				}
-				for nf := 0; nf <= len(np.first); nf++ {
-					for ns := 0; ns <= len(np.last); ns++ {
+				for nf := 0; nf <= len(firstPos); nf++ {
+					for ns := 0; ns <= len(secondPos); ns++ {
 						total := nf + ns
 						if total == 0 || (nf < 2 && ns < 2) {
 							continue
