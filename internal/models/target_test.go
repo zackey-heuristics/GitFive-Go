@@ -106,7 +106,7 @@ func TestStringSetMarshalJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	var arr []string
-	json.Unmarshal(data, &arr)
+	_ = json.Unmarshal(data, &arr)
 	if len(arr) != 1 || arr[0] != "hello" {
 		t.Errorf("expected [\"hello\"], got %s", string(data))
 	}

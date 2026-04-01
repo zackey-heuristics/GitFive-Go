@@ -44,7 +44,7 @@ func searchGoogle(ctx context.Context, client *httpclient.Client, query string) 
 	if err != nil {
 		return ""
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {

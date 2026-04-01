@@ -45,7 +45,7 @@ func ScrapeOrgs(ctx context.Context, client *httpclient.Client, username string,
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -83,7 +83,7 @@ func ScrapeOrgs(ctx context.Context, client *httpclient.Client, username string,
 			mu.Lock()
 			orgs = append(orgs, org)
 			mu.Unlock()
-			bar.Add(1)
+			_ = bar.Add(1)
 			return nil
 		})
 	}
@@ -91,7 +91,7 @@ func ScrapeOrgs(ctx context.Context, client *httpclient.Client, username string,
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	bar.Finish()
+	_ = bar.Finish()
 	return orgs, nil
 }
 
@@ -102,7 +102,7 @@ func fetchOrg(ctx context.Context, client *httpclient.Client, orgName string) (O
 	if err != nil {
 		return org, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -126,7 +126,7 @@ func fetchOrg(ctx context.Context, client *httpclient.Client, orgName string) (O
 	if err != nil {
 		return org, err
 	}
-	defer resp1.Body.Close()
+	defer func() { _ = resp1.Body.Close() }()
 	doc1, _ := goquery.NewDocumentFromReader(resp1.Body)
 
 	repoWebsiteLink := strings.TrimSpace(doc1.Find(`a[role="link"]`).Text())
@@ -142,12 +142,12 @@ func fetchOrg(ctx context.Context, client *httpclient.Client, orgName string) (O
 	if err != nil {
 		return org, err
 	}
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	doc2, _ := goquery.NewDocumentFromReader(resp2.Body)
 
 	ghPages := GitHubPagesInfo{}
-	if checkGitHubPages(ctx, client, &ghPages, resp1.StatusCode, doc1, orgName, orgName) ||
-		checkGitHubPages(ctx, client, &ghPages, resp2.StatusCode, doc2, orgName+".github.io", orgName) {
+	if !checkGitHubPages(ctx, client, &ghPages, resp1.StatusCode, doc1, orgName, orgName) {
+		checkGitHubPages(ctx, client, &ghPages, resp2.StatusCode, doc2, orgName+".github.io", orgName)
 	}
 	org.GitHubPages = ghPages
 
@@ -177,11 +177,11 @@ func checkGitHubPages(ctx context.Context, client *httpclient.Client, ghPages *G
 	cnameResp, err := client.Get(ctx, cnameURL)
 	if err != nil || cnameResp.StatusCode != 200 {
 		if cnameResp != nil {
-			cnameResp.Body.Close()
+			_ = cnameResp.Body.Close()
 		}
 		return ghPages.Activated
 	}
-	defer cnameResp.Body.Close()
+	defer func() { _ = cnameResp.Body.Close() }()
 
 	domain := strings.TrimSpace(ReadAll(cnameResp))
 

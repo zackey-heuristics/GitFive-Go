@@ -23,7 +23,7 @@ import (
 func PromptCreds(creds *Credentials) {
 	for creds.Username == "" {
 		fmt.Print("Username => ")
-		fmt.Scanln(&creds.Username)
+		_, _ = fmt.Scanln(&creds.Username)
 	}
 	for creds.Password == "" {
 		fmt.Print("Password => ")
@@ -54,7 +54,7 @@ func CheckToken(creds *Credentials) error {
 	if err != nil {
 		return fmt.Errorf("token check failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == 401 {
 		return fmt.Errorf("token seems invalid")
@@ -65,7 +65,9 @@ func CheckToken(creds *Credentials) error {
 
 	body, _ := io.ReadAll(resp.Body)
 	var data map[string]interface{}
-	json.Unmarshal(body, &data)
+	if err := json.Unmarshal(body, &data); err != nil {
+		return fmt.Errorf("parse token response: %w", err)
+	}
 
 	owner, _ := data["login"].(string)
 	if !strings.EqualFold(owner, creds.Username) {
@@ -136,7 +138,7 @@ func Login(ctx context.Context, creds *Credentials, client *httpclient.Client, f
 	if err != nil {
 		return fmt.Errorf("login page fetch failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -162,7 +164,7 @@ func Login(ctx context.Context, creds *Credentials, client *httpclient.Client, f
 	if err != nil {
 		return fmt.Errorf("login submit failed: %w", err)
 	}
-	defer loginResp.Body.Close()
+	defer func() { _ = loginResp.Body.Close() }()
 
 	if loginResp.StatusCode != http.StatusFound {
 		return fmt.Errorf("login failed, verify your credentials")
@@ -194,13 +196,13 @@ func Login(ctx context.Context, creds *Credentials, client *httpclient.Client, f
 func handleDeviceVerification(ctx context.Context, creds *Credentials, client, noRedirClient *httpclient.Client) error {
 	fmt.Println("[*] Additional check (device verification)")
 	creds.Session["_device_id"] = client.GetCookie("https://github.com", "_device_id")
-	creds.Save()
+	_ = creds.Save()
 
 	resp, err := noRedirClient.Get(ctx, "https://github.com/sessions/verified-device")
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, _ := goquery.NewDocumentFromReader(resp.Body)
 	token, _ := doc.Find(`form[action="/sessions/verified-device"] input[name="authenticity_token"]`).Attr("value")
@@ -218,7 +220,7 @@ func handleDeviceVerification(ctx context.Context, creds *Credentials, client, n
 	if err != nil {
 		return err
 	}
-	defer postResp.Body.Close()
+	defer func() { _ = postResp.Body.Close() }()
 
 	if getCookie(postResp, "logged_in") == "yes" {
 		return saveLoginSession(creds, postResp, client)
@@ -229,13 +231,13 @@ func handleDeviceVerification(ctx context.Context, creds *Credentials, client, n
 func handleTOTP(ctx context.Context, creds *Credentials, client *httpclient.Client) error {
 	fmt.Println("[*] Additional check (TOTP)")
 	creds.Session["_device_id"] = client.GetCookie("https://github.com", "_device_id")
-	creds.Save()
+	_ = creds.Save()
 
 	resp, err := client.Get(ctx, "https://github.com/sessions/two-factor/app")
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, _ := goquery.NewDocumentFromReader(resp.Body)
 	token, _ := doc.Find(`form[action="/sessions/two-factor"] input[name="authenticity_token"]`).Attr("value")
@@ -253,7 +255,7 @@ func handleTOTP(ctx context.Context, creds *Credentials, client *httpclient.Clie
 	if err != nil {
 		return err
 	}
-	defer postResp.Body.Close()
+	defer func() { _ = postResp.Body.Close() }()
 
 	if getCookie(postResp, "logged_in") == "yes" {
 		return saveLoginSession(creds, postResp, client)
@@ -264,13 +266,13 @@ func handleTOTP(ctx context.Context, creds *Credentials, client *httpclient.Clie
 func handleMobile2FA(ctx context.Context, creds *Credentials, client *httpclient.Client, tmprinter *ui.TMPrinter) error {
 	fmt.Println("[*] 2FA detected (GitHub App)")
 	creds.Session["_device_id"] = client.GetCookie("https://github.com", "_device_id")
-	creds.Save()
+	_ = creds.Save()
 
 	resp, err := client.Get(ctx, "https://github.com/sessions/two-factor/mobile?auto=true")
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusFound {
 		return fmt.Errorf("temporarily rate limited, please wait a minute")
@@ -293,10 +295,10 @@ func handleMobile2FA(ctx context.Context, creds *Credentials, client *httpclient
 			return err
 		}
 		body, _ := io.ReadAll(pollResp.Body)
-		pollResp.Body.Close()
+		_ = pollResp.Body.Close()
 
 		var result map[string]string
-		json.Unmarshal(body, &result)
+		_ = json.Unmarshal(body, &result)
 
 		switch result["status"] {
 		case "STATUS_ACTIVE":
@@ -318,13 +320,13 @@ func handleMobile2FA(ctx context.Context, creds *Credentials, client *httpclient
 func handleGeneric2FA(ctx context.Context, creds *Credentials, client *httpclient.Client) error {
 	fmt.Println("[*] 2FA")
 	creds.Session["_device_id"] = client.GetCookie("https://github.com", "_device_id")
-	creds.Save()
+	_ = creds.Save()
 
 	resp, err := client.Get(ctx, "https://github.com/sessions/two-factor/app")
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, _ := goquery.NewDocumentFromReader(resp.Body)
 	token, _ := doc.Find(`form[action="/sessions/two-factor"] input[name="authenticity_token"]`).Attr("value")
@@ -344,7 +346,7 @@ func handleGeneric2FA(ctx context.Context, creds *Credentials, client *httpclien
 	if err != nil {
 		return err
 	}
-	defer postResp.Body.Close()
+	defer func() { _ = postResp.Body.Close() }()
 
 	if getCookie(postResp, "logged_in") == "yes" {
 		return saveLoginSession(creds, postResp, client)

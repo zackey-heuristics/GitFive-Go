@@ -35,7 +35,7 @@ func NewEmailCmd() *cobra.Command {
 				return fmt.Errorf("metamon failed: %w", err)
 			}
 
-			if emailsIndex != nil && len(emailsIndex) > 0 {
+			if len(emailsIndex) > 0 {
 				accounts, err := scraper.ScrapeCommits(ctx, r.Client, r.Creds.Username, tempRepoName, emailsIndex, "", false, r.Limiters["commits_scrape"])
 				if err != nil {
 					fmt.Printf("[!] Commits scrape failed: %v\n", err)
@@ -52,7 +52,9 @@ func NewEmailCmd() *cobra.Command {
 
 			// Cleanup
 			if tempRepoName != "" {
-				scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password)
+				if err := scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password); err != nil {
+					fmt.Printf("[!] Failed to delete temporary repository %s: %v\n", tempRepoName, err)
+				}
 			}
 
 			return nil

@@ -18,7 +18,7 @@ func TestGet(t *testing.T) {
 			t.Error("expected User-Agent header")
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer srv.Close()
 
@@ -27,7 +27,7 @@ func TestGet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "ok" {
 		t.Errorf("got %q, want %q", body, "ok")
@@ -39,7 +39,7 @@ func TestPostForm(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
-		r.ParseForm()
+		_ = r.ParseForm()
 		if r.FormValue("key") != "value" {
 			t.Errorf("expected key=value, got %s", r.FormValue("key"))
 		}
@@ -52,7 +52,7 @@ func TestPostForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != 200 {
 		t.Errorf("got status %d, want 200", resp.StatusCode)
 	}
@@ -69,7 +69,7 @@ func TestNoRedirect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusFound {
 		t.Errorf("got status %d, want %d", resp.StatusCode, http.StatusFound)
 	}

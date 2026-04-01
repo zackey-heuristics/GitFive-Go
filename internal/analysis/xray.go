@@ -39,7 +39,7 @@ func AnalyzeRepo(ctx context.Context, token, targetUsername string, targetID int
 
 	// Clone with partial filter
 	cmd := exec.CommandContext(ctx, "git", "clone", "--filter=tree:0", "--no-checkout", repoURL, repoPath)
-	cmd.Run() // Ignore error — may fail on checkout but commits are cloned
+	_ = cmd.Run() // Ignore error — may fail on checkout but commits are cloned
 
 	// Check if repo has any refs
 	refCmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
@@ -113,7 +113,9 @@ func XrayAnalyze(ctx context.Context, token, targetUsername string, targetID int
 
 	home, _ := os.UserHomeDir()
 	reposFolder := filepath.Join(home, ".malfrats", "gitfive", ".tmp", targetUsername, "repos")
-	os.MkdirAll(reposFolder, 0o755)
+	if err := os.MkdirAll(reposFolder, 0o755); err != nil {
+		return nil, fmt.Errorf("create repos folder: %w", err)
+	}
 
 	var sourceRepos []models.RepoDetails
 	for _, r := range repos {
@@ -140,7 +142,7 @@ func XrayAnalyze(ctx context.Context, token, targetUsername string, targetID int
 			}
 			mu.Lock()
 			results = append(results, result)
-			bar.Add(1)
+			_ = bar.Add(1)
 			mu.Unlock()
 			return nil
 		})
@@ -149,7 +151,7 @@ func XrayAnalyze(ctx context.Context, token, targetUsername string, targetID int
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	bar.Finish()
+	_ = bar.Finish()
 	return results, nil
 }
 

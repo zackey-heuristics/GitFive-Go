@@ -29,7 +29,7 @@ func NewEmailsCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("couldn't open file: %w", err)
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 
 			var emails []string
 			scanner := bufio.NewScanner(f)
@@ -75,7 +75,9 @@ func NewEmailsCmd() *cobra.Command {
 
 			// Cleanup
 			if tempRepoName != "" {
-				scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password)
+				if err := scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to delete temporary repository %s: %v\n", tempRepoName, err)
+				}
 			}
 
 			return nil
