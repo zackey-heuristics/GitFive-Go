@@ -12,7 +12,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/zackey-heuristics/gitfive-go/internal/httpclient"
-	"github.com/zackey-heuristics/gitfive-go/internal/ui"
 )
 
 // CommitAccount holds the result of commit-based email discovery.
@@ -26,137 +25,130 @@ type CommitAccount struct {
 var (
 	embeddedDataRegex = regexp.MustCompile(`data-target="react-app\.embeddedData">(\{.*?\})</script>`)
 	currentOidRegex   = regexp.MustCompile(`"currentOid":"(.*?)"`)
-	commitCountRegex  = regexp.MustCompile(`"commitCount":"(.*?)"`)
 )
 
+// commitPayload represents the embedded JSON structure on GitHub commits pages.
+type commitPayload struct {
+	Payload struct {
+		CommitGroups []struct {
+			Commits []commitEntry `json:"commits"`
+		} `json:"commitGroups"`
+	} `json:"payload"`
+}
+
+type commitEntry struct {
+	OID     string         `json:"oid"`
+	Authors []commitAuthor `json:"authors"`
+}
+
+type commitAuthor struct {
+	DisplayName string `json:"displayName"`
+	Login       string `json:"login"`
+	AvatarURL   string `json:"avatarUrl"`
+}
+
 // ScrapeCommits analyzes commits in a repo to map emails to GitHub accounts.
+// It fetches the mirage branch commits page(s) and parses the embedded React data.
 func ScrapeCommits(ctx context.Context, client *httpclient.Client, owner, repoName string,
 	emailsIndex map[string]string, targetUsername string, checkOnly bool, sem Semaphore) (map[string]*CommitAccount, error) {
 
 	out := make(map[string]*CommitAccount)
 	var mu sync.Mutex
 
-	// Get the mirage branch commits page to find last hash and commit count.
-	// We use the commits page directly (not the repo root) because metamon
-	// pushes to the "mirage" branch which may not be the default branch.
-	resp, err := client.Get(ctx, fmt.Sprintf("https://github.com/%s/%s/commits/mirage", owner, repoName))
+	totalEmails := len(emailsIndex)
+	if totalEmails == 0 {
+		return out, nil
+	}
+
+	// Fetch the first commits page to get lastHash and the initial batch of commits.
+	firstURL := fmt.Sprintf("https://github.com/%s/%s/commits/mirage", owner, repoName)
+	resp, err := client.Get(ctx, firstURL)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
 	bodyHTML := ReadAll(resp)
 
-	// Check if empty
 	if strings.Contains(strings.ToLower(bodyHTML), "this repository is empty") {
 		return nil, fmt.Errorf("empty repository")
 	}
 
-	// Get last hash from the commits page
+	// Get lastHash for pagination
 	oidMatches := currentOidRegex.FindStringSubmatch(bodyHTML)
 	if len(oidMatches) < 2 {
-		// Fallback: try the repo root page
-		resp2, err := client.Get(ctx, fmt.Sprintf("https://github.com/%s/%s", owner, repoName))
-		if err != nil {
-			return nil, fmt.Errorf("couldn't fetch last hash")
-		}
-		defer resp2.Body.Close()
-		bodyHTML2 := ReadAll(resp2)
-		oidMatches = currentOidRegex.FindStringSubmatch(bodyHTML2)
-		if len(oidMatches) < 2 {
-			return nil, fmt.Errorf("couldn't fetch last hash")
-		}
-		bodyHTML = bodyHTML2
+		return nil, fmt.Errorf("couldn't fetch last hash from commits page")
 	}
 	lastHash := oidMatches[1]
 
-	// Get total commits
-	total := 0
-	countMatches := commitCountRegex.FindStringSubmatch(bodyHTML)
-	if len(countMatches) >= 2 {
-		countStr := strings.ReplaceAll(countMatches[1], ",", "")
-		if countStr == "\u221e" { // infinity symbol
-			total = 50000
-		} else {
-			total = parseCount(countStr)
+	// Parse the first page directly — this avoids needing commitCount.
+	firstPageCommits := parseEmbeddedCommits(bodyHTML)
+
+	// Process the first page inline
+	processCommits(ctx, client, firstPageCommits, emailsIndex, targetUsername, checkOnly, &mu, out)
+
+	// If there are more emails than commits on the first page, paginate.
+	// GitHub shows ~35 commits per page.
+	if totalEmails > len(firstPageCommits) && len(firstPageCommits) >= 35 {
+		// Estimate how many more pages we need
+		remaining := totalEmails - len(firstPageCommits)
+		var pages []int
+		for offset := 35; offset <= remaining+35; offset += 35 {
+			pages = append(pages, offset)
 		}
+
+		bar := progressbar.NewOptions(len(pages),
+			progressbar.OptionSetDescription("Fetching more commits..."),
+			progressbar.OptionClearOnFinish(),
+		)
+
+		g, ctx := errgroup.WithContext(ctx)
+		for _, page := range pages {
+			page := page
+			g.Go(func() error {
+				if err := sem.Acquire(ctx, 1); err != nil {
+					return err
+				}
+				defer sem.Release(1)
+
+				url := fmt.Sprintf("https://github.com/%s/%s/commits/mirage?after=%s+%d&branch=mirage",
+					owner, repoName, lastHash, page)
+
+				resp, err := client.Get(ctx, url)
+				if err != nil {
+					return err
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode == 429 {
+					return fmt.Errorf("rate-limit detected on commits scrape")
+				}
+
+				pageBody := ReadAll(resp)
+				commits := parseEmbeddedCommits(pageBody)
+				processCommits(ctx, client, commits, emailsIndex, targetUsername, checkOnly, &mu, out)
+
+				bar.Add(1)
+				return nil
+			})
+		}
+
+		if err := g.Wait(); err != nil {
+			return nil, err
+		}
+		bar.Finish()
 	}
 
-	if total == 0 {
-		return out, nil
-	}
-
-	// Build page offsets
-	pages := []int{0}
-	for i := 34; i < total; i += 35 {
-		pages = append(pages, i)
-	}
-
-	bar := ui.NewProgressBar(total, "Fetching committers...")
-
-	g, ctx := errgroup.WithContext(ctx)
-	for _, page := range pages {
-		page := page
-		g.Go(func() error {
-			if err := sem.Acquire(ctx, 1); err != nil {
-				return err
-			}
-			defer sem.Release(1)
-
-			return fetchCommitsPage(ctx, client, owner, repoName, emailsIndex, lastHash, page, targetUsername, checkOnly, &mu, out, bar)
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-	bar.Finish()
 	return out, nil
 }
 
-func fetchCommitsPage(ctx context.Context, client *httpclient.Client, owner, repoName string,
-	emailsIndex map[string]string, lastHash string, page int, targetUsername string,
-	checkOnly bool, mu *sync.Mutex, out map[string]*CommitAccount, bar *progressbar.ProgressBar) error {
-
-	var url string
-	if page == 0 {
-		url = fmt.Sprintf("https://github.com/%s/%s/commits/mirage", owner, repoName)
-	} else {
-		url = fmt.Sprintf("https://github.com/%s/%s/commits/mirage?after=%s+%d&branch=mirage", owner, repoName, lastHash, page)
-	}
-
-	resp, err := client.Get(ctx, url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 429 {
-		return fmt.Errorf("rate-limit detected on commits scrape")
-	}
-
-	bodyHTML := ReadAll(resp)
-	matches := embeddedDataRegex.FindStringSubmatch(bodyHTML)
+// parseEmbeddedCommits extracts commit entries from the embedded React JSON.
+func parseEmbeddedCommits(html string) []commitEntry {
+	matches := embeddedDataRegex.FindStringSubmatch(html)
 	if len(matches) < 2 {
-		// No embedded data on this page — may be a different HTML structure
 		return nil
 	}
 
-	var payload struct {
-		Payload struct {
-			CommitGroups []struct {
-				Commits []struct {
-					OID     string `json:"oid"`
-					Authors []struct {
-						DisplayName string `json:"displayName"`
-						Login       string `json:"login"`
-						AvatarURL   string `json:"avatarUrl"`
-					} `json:"authors"`
-				} `json:"commits"`
-			} `json:"commitGroups"`
-		} `json:"payload"`
-	}
-
+	var payload commitPayload
 	if err := json.Unmarshal([]byte(matches[1]), &payload); err != nil {
 		return nil
 	}
@@ -165,31 +157,35 @@ func fetchCommitsPage(ctx context.Context, client *httpclient.Client, owner, rep
 		return nil
 	}
 
-	for _, commit := range payload.Payload.CommitGroups[0].Commits {
+	// Collect commits from all groups (there may be multiple date groups)
+	var all []commitEntry
+	for _, group := range payload.Payload.CommitGroups {
+		all = append(all, group.Commits...)
+	}
+	return all
+}
+
+// processCommits matches commits to emails and resolves GitHub accounts.
+func processCommits(ctx context.Context, client *httpclient.Client,
+	commits []commitEntry, emailsIndex map[string]string,
+	targetUsername string, checkOnly bool,
+	mu *sync.Mutex, out map[string]*CommitAccount) {
+
+	for _, commit := range commits {
 		if len(commit.Authors) == 0 {
 			continue
 		}
 
 		// Find the author that is NOT gitfive_hunter and has a GitHub login.
-		// With 2 authors: committer (gitfive_hunter) + author (spoofed).
-		// With 1 author: GitHub may merge them if committer == author,
-		// or show only the spoofed author if it matched a GitHub account.
-		var targetAuthor *struct {
-			DisplayName string
-			Login       string
-			AvatarURL   string
-		}
-		for _, a := range commit.Authors {
+		var target *commitAuthor
+		for i := range commit.Authors {
+			a := &commit.Authors[i]
 			if a.DisplayName != "gitfive_hunter" && a.Login != "" {
-				targetAuthor = &struct {
-					DisplayName string
-					Login       string
-					AvatarURL   string
-				}{a.DisplayName, a.Login, a.AvatarURL}
+				target = a
 				break
 			}
 		}
-		if targetAuthor == nil {
+		if target == nil {
 			continue
 		}
 
@@ -199,17 +195,17 @@ func fetchCommitsPage(ctx context.Context, client *httpclient.Client, owner, rep
 		}
 
 		account := &CommitAccount{
-			Avatar:   targetAuthor.AvatarURL,
-			Username: targetAuthor.Login,
-			IsTarget: strings.EqualFold(targetAuthor.Login, targetUsername),
+			Avatar:   target.AvatarURL,
+			Username: target.Login,
+			IsTarget: strings.EqualFold(target.Login, targetUsername),
 		}
 
 		if account.IsTarget {
-			fmt.Printf("[+] [Target's email] %s -> @%s\n", email, targetAuthor.Login)
+			fmt.Printf("[+] [Target's email] %s -> @%s\n", email, target.Login)
 		}
 
 		if !checkOnly {
-			name, _ := FetchProfileName(ctx, client, targetAuthor.Login)
+			name, _ := FetchProfileName(ctx, client, target.Login)
 			account.FullName = name
 		}
 
@@ -217,8 +213,4 @@ func fetchCommitsPage(ctx context.Context, client *httpclient.Client, owner, rep
 		out[email] = account
 		mu.Unlock()
 	}
-
-	bar.Add(35)
-	return nil
 }
-

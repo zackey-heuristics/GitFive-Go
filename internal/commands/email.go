@@ -37,18 +37,18 @@ func NewEmailCmd() *cobra.Command {
 				return fmt.Errorf("metamon failed: %w", err)
 			}
 
-			if emailsIndex != nil {
+			if emailsIndex != nil && len(emailsIndex) > 0 {
 				accounts, err := scraper.ScrapeCommits(ctx, r.Client, r.Creds.Username, tempRepoName, emailsIndex, "", false, r.Limiters["commits_scrape"])
-				if err == nil {
-					if acc, ok := accounts[email]; ok {
-						fmt.Printf("[+] %s -> @%s", email, acc.Username)
-						if acc.FullName != "" {
-							fmt.Printf(" [%s]", acc.FullName)
-						}
-						fmt.Println()
-					} else {
-						fmt.Printf("[-] Email %s is not linked to any GitHub account.\n", email)
+				if err != nil {
+					fmt.Printf("[!] Commits scrape failed: %v\n", err)
+				} else if acc, ok := accounts[email]; ok {
+					fmt.Printf("[+] %s -> @%s", email, acc.Username)
+					if acc.FullName != "" {
+						fmt.Printf(" [%s]", acc.FullName)
 					}
+					fmt.Println()
+				} else {
+					fmt.Printf("[-] Email %s is not linked to any GitHub account.\n", email)
 				}
 			}
 
