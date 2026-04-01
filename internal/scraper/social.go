@@ -38,8 +38,8 @@ func GetFollows(ctx context.Context, client *httpclient.Client, username, toScra
 		return models.NewStringSet(), nil
 	}
 
-	// Calculate pages (50 per page)
-	numPages := (count / 50) + 1
+	// Calculate pages (50 per page), ceiling division
+	numPages := (count + 49) / 50
 
 	var mu sync.Mutex
 	usernames := models.NewStringSet()

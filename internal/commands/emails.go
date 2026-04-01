@@ -15,7 +15,6 @@ import (
 
 // NewEmailsCmd creates the "emails" subcommand for batch email processing.
 func NewEmailsCmd() *cobra.Command {
-	var jsonFile string
 	var target string
 
 	cmd := &cobra.Command{
@@ -79,12 +78,10 @@ func NewEmailsCmd() *cobra.Command {
 				scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password)
 			}
 
-			_ = jsonFile // TODO: JSON export
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&jsonFile, "json", "", "File to write the JSON output to")
 	cmd.Flags().StringVarP(&target, "target", "t", "", "GitHub username of the target")
 	return cmd
 }

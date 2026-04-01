@@ -1,25 +1,26 @@
 package analysis
 
 import (
+	"context"
 	"fmt"
-	"net/http"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 
+	"github.com/zackey-heuristics/gitfive-go/internal/httpclient"
 	"github.com/zackey-heuristics/gitfive-go/internal/models"
 	"github.com/zackey-heuristics/gitfive-go/internal/util"
 )
 
 // GuessCustomDomain searches Google for the company domain from the target's profile.
-func GuessCustomDomain(target *models.Target) models.StringSet {
+func GuessCustomDomain(ctx context.Context, client *httpclient.Client, target *models.Target) models.StringSet {
 	company := strings.ToLower(target.Company)
 	if company == "" {
 		return models.NewStringSet()
 	}
 
-	// Simple Google search via scraping
-	domain := searchGoogle(company)
+	domain := searchGoogle(ctx, client, company)
 	if domain != "" {
 		fmt.Printf("[Google] Found possible domain %q for company %q\n", domain, company)
 		result := models.NewStringSet()
@@ -29,13 +30,17 @@ func GuessCustomDomain(target *models.Target) models.StringSet {
 	return models.NewStringSet()
 }
 
-func searchGoogle(query string) string {
+func searchGoogle(ctx context.Context, client *httpclient.Client, query string) string {
 	if strings.EqualFold(query, "google") {
 		return "google.com"
 	}
 
+	// Use a short timeout for Google search to avoid hanging
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	searchURL := fmt.Sprintf("https://www.google.com/search?q=%s&num=5", strings.ReplaceAll(query, " ", "+"))
-	resp, err := http.Get(searchURL)
+	resp, err := client.Get(ctx, searchURL)
 	if err != nil {
 		return ""
 	}
