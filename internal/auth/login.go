@@ -54,7 +54,7 @@ func CheckToken(creds *Credentials) error {
 	if err != nil {
 		return fmt.Errorf("token check failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == 401 {
 		return fmt.Errorf("token seems invalid")
@@ -138,7 +138,7 @@ func Login(ctx context.Context, creds *Credentials, client *httpclient.Client, f
 	if err != nil {
 		return fmt.Errorf("login page fetch failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -202,7 +202,7 @@ func handleDeviceVerification(ctx context.Context, creds *Credentials, client, n
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, _ := goquery.NewDocumentFromReader(resp.Body)
 	token, _ := doc.Find(`form[action="/sessions/verified-device"] input[name="authenticity_token"]`).Attr("value")
@@ -237,7 +237,7 @@ func handleTOTP(ctx context.Context, creds *Credentials, client *httpclient.Clie
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, _ := goquery.NewDocumentFromReader(resp.Body)
 	token, _ := doc.Find(`form[action="/sessions/two-factor"] input[name="authenticity_token"]`).Attr("value")
@@ -272,7 +272,7 @@ func handleMobile2FA(ctx context.Context, creds *Credentials, client *httpclient
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusFound {
 		return fmt.Errorf("temporarily rate limited, please wait a minute")
@@ -326,7 +326,7 @@ func handleGeneric2FA(ctx context.Context, creds *Credentials, client *httpclien
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, _ := goquery.NewDocumentFromReader(resp.Body)
 	token, _ := doc.Find(`form[action="/sessions/two-factor"] input[name="authenticity_token"]`).Attr("value")

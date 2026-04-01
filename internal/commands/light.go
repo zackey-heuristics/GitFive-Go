@@ -42,7 +42,7 @@ func NewLightCmd() *cobra.Command {
 					} `json:"commit"`
 				} `json:"items"`
 			}
-			json.Unmarshal(data, &result)
+			_ = json.Unmarshal(data, &result)
 
 			emails := make(map[string]bool)
 			for _, item := range result.Items {
@@ -65,7 +65,7 @@ func NewLightCmd() *cobra.Command {
 							} `json:"commit"`
 						} `json:"items"`
 					}
-					json.Unmarshal(data2, &result2)
+					_ = json.Unmarshal(data2, &result2)
 					for _, item := range result2.Items {
 						email := item.Commit.Author.Email
 						if email != "" && email != "noreply@github.com" && !strings.HasSuffix(email, "@users.noreply.github.com") {
