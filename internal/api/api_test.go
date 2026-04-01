@@ -18,7 +18,7 @@ func TestQuerySuccess(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(200)
-		json.NewEncoder(w).Encode(map[string]string{"login": "testuser"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"login": "testuser"})
 	}))
 	defer srv.Close()
 
@@ -30,7 +30,7 @@ func TestQuerySuccess(t *testing.T) {
 	}
 
 	var result map[string]string
-	json.Unmarshal(data, &result)
+	_ = json.Unmarshal(data, &result)
 	if result["login"] != "testuser" {
 		t.Errorf("expected login 'testuser', got %v", result["login"])
 	}
@@ -45,7 +45,7 @@ func TestQueryRateLimitRetry(t *testing.T) {
 		if r.URL.Path == "/rate_limit" {
 			// Return remaining > 0 so the client switches
 			w.WriteHeader(200)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"resources": map[string]interface{}{
 					"core": map[string]interface{}{"remaining": 100},
 				},
@@ -57,13 +57,13 @@ func TestQueryRateLimitRetry(t *testing.T) {
 			// First call: rate limited
 			w.Header().Set("X-RateLimit-Resource", "core")
 			w.WriteHeader(403)
-			w.Write([]byte(`{"message":"rate limited"}`))
+			_, _ = w.Write([]byte(`{"message":"rate limited"}`))
 			return
 		}
 
 		// Second call: success
 		w.WriteHeader(200)
-		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
 	}))
 	defer srv.Close()
 
@@ -75,7 +75,7 @@ func TestQueryRateLimitRetry(t *testing.T) {
 	}
 
 	var result map[string]string
-	json.Unmarshal(data, &result)
+	_ = json.Unmarshal(data, &result)
 	if result["ok"] != "true" {
 		t.Errorf("expected ok, got %v", result)
 	}

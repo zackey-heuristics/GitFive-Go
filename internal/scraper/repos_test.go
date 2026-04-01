@@ -35,7 +35,7 @@ const reposHTML = `<html><body>
 
 func TestParseReposPage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, reposHTML)
+		_, _ = fmt.Fprint(w, reposHTML)
 	}))
 	defer srv.Close()
 

@@ -41,7 +41,7 @@ func AnalyzePEA(ctx context.Context, client *httpclient.Client, usernames models
 			mu.Lock()
 			users[u] = pea
 			mu.Unlock()
-			bar.Add(1)
+			_ = bar.Add(1)
 			return nil
 		})
 	}
@@ -49,7 +49,7 @@ func AnalyzePEA(ctx context.Context, client *httpclient.Client, usernames models
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	bar.Finish()
+	_ = bar.Finish()
 	return users, nil
 }
 
@@ -122,7 +122,7 @@ func HasManyStarsOrRepos(ctx context.Context, client *httpclient.Client, usernam
 	if err != nil {
 		return false, err
 	}
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 
 	doc2, err := goquery.NewDocumentFromReader(resp2.Body)
 	if err != nil {

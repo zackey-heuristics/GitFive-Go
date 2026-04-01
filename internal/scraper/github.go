@@ -88,7 +88,7 @@ func DeleteRepo(ctx context.Context, client *httpclient.Client, username, repoNa
 	if err != nil {
 		return err
 	}
-	defer delResp.Body.Close()
+	defer func() { _ = delResp.Body.Close() }()
 
 	if delResp.StatusCode == 200 || delResp.StatusCode == 302 {
 		return nil

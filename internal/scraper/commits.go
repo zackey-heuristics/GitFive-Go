@@ -127,7 +127,7 @@ func ScrapeCommits(ctx context.Context, client *httpclient.Client, owner, repoNa
 				commits := parseEmbeddedCommits(pageBody)
 				processCommits(ctx, client, commits, emailsIndex, targetUsername, checkOnly, &mu, out)
 
-				bar.Add(1)
+				_ = bar.Add(1)
 				return nil
 			})
 		}
@@ -135,7 +135,7 @@ func ScrapeCommits(ctx context.Context, client *httpclient.Client, owner, repoNa
 		if err := g.Wait(); err != nil {
 			return nil, err
 		}
-		bar.Finish()
+		_ = bar.Finish()
 	}
 
 	return out, nil
