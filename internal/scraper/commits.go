@@ -138,6 +138,7 @@ func fetchCommitsPage(ctx context.Context, client *httpclient.Client, owner, rep
 	bodyHTML := ReadAll(resp)
 	matches := embeddedDataRegex.FindStringSubmatch(bodyHTML)
 	if len(matches) < 2 {
+		// No embedded data on this page — may be a different HTML structure
 		return nil
 	}
 
@@ -165,23 +166,26 @@ func fetchCommitsPage(ctx context.Context, client *httpclient.Client, owner, rep
 	}
 
 	for _, commit := range payload.Payload.CommitGroups[0].Commits {
-		if len(commit.Authors) < 2 {
+		if len(commit.Authors) == 0 {
 			continue
 		}
 
+		// Find the author that is NOT gitfive_hunter and has a GitHub login.
+		// With 2 authors: committer (gitfive_hunter) + author (spoofed).
+		// With 1 author: GitHub may merge them if committer == author,
+		// or show only the spoofed author if it matched a GitHub account.
 		var targetAuthor *struct {
 			DisplayName string
 			Login       string
 			AvatarURL   string
 		}
-		for i, a := range commit.Authors {
+		for _, a := range commit.Authors {
 			if a.DisplayName != "gitfive_hunter" && a.Login != "" {
 				targetAuthor = &struct {
 					DisplayName string
 					Login       string
 					AvatarURL   string
 				}{a.DisplayName, a.Login, a.AvatarURL}
-				_ = i
 				break
 			}
 		}

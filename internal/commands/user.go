@@ -215,6 +215,24 @@ func NewUserCmd() *cobra.Command {
 					break
 				}
 
+				if len(accounts) == 0 {
+					fmt.Println("[-] No email matched a GitHub account.")
+					break
+				}
+
+				// Display found accounts
+				for email, acc := range accounts {
+					marker := ""
+					if acc.IsTarget {
+						marker = " [TARGET]"
+					}
+					nameStr := ""
+					if acc.FullName != "" {
+						nameStr = fmt.Sprintf(" [%s]", acc.FullName)
+					}
+					fmt.Printf("[+] %s -> @%s%s%s\n", email, acc.Username, nameStr, marker)
+				}
+
 				newUsernames := false
 				for email, acc := range accounts {
 					if acc.IsTarget {
@@ -244,6 +262,23 @@ func NewUserCmd() *cobra.Command {
 			if lastTempRepo != "" {
 				scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, lastTempRepo, r.Creds.Password)
 				fmt.Println("[+] Deleted the remote repo")
+			}
+
+			// Summary
+			fmt.Println("\nRESULTS SUMMARY")
+			if len(r.Target.Emails) > 0 {
+				fmt.Printf("[+] %d confirmed email(s) for %s:\n", len(r.Target.Emails), r.Target.Username)
+				for email := range r.Target.Emails {
+					fmt.Printf("  - %s\n", email)
+				}
+			} else {
+				fmt.Printf("[-] No confirmed emails found for %s.\n", r.Target.Username)
+			}
+			if len(r.Target.Usernames) > 1 {
+				fmt.Printf("[+] Known usernames: %s\n", strings.Join(r.Target.Usernames.Slice(), ", "))
+			}
+			if len(r.Target.Fullnames) > 0 {
+				fmt.Printf("[+] Known names: %s\n", strings.Join(r.Target.Fullnames.Slice(), ", "))
 			}
 
 			// JSON export
