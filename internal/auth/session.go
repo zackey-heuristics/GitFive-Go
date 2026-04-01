@@ -29,13 +29,13 @@ func CheckAndLogin(ctx context.Context, creds *Credentials, client *httpclient.C
 	}
 
 	if !valid {
-		fmt.Println("[DEBUG] Cookies no more active, re-logging in...")
+		fmt.Println("[-] Session expired, re-logging in...")
 		if err := Login(ctx, creds, client, false); err != nil {
 			return err
 		}
-		fmt.Println("[DEBUG] Cookies re-generated and valid!")
+		fmt.Println("[+] Session re-established!")
 	} else {
-		fmt.Println("[DEBUG] Cookies valid!")
+		fmt.Println("[+] Session active.")
 	}
 	return nil
 }
