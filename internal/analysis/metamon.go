@@ -74,7 +74,9 @@ func StartMetamon(ctx context.Context, client *httpclient.Client, owner, token s
 
 	for _, email := range emails {
 		// Write a unique file for each commit
-		_ = os.WriteFile(dummyFile, []byte(email), 0o644)
+		if err := os.WriteFile(dummyFile, []byte(email), 0o644); err != nil {
+			continue
+		}
 		if err := gitExec(ctx, tmpDir, "add", "."); err != nil {
 			continue
 		}

@@ -72,13 +72,17 @@ func TestClean(t *testing.T) {
 	sessionPath := filepath.Join(tmpDir, "session.m")
 
 	_ = os.WriteFile(credsPath, []byte("data"), 0o600)
-	_ = os.WriteFile(sessionPath, []byte("data"), 0o600)
+	if err := os.WriteFile(sessionPath, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	creds := &Credentials{
 		credsPath:   credsPath,
 		sessionPath: sessionPath,
 	}
-	_ = creds.Clean()
+	if err := creds.Clean(); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := os.Stat(credsPath); !os.IsNotExist(err) {
 		t.Error("creds file should be deleted")

@@ -262,8 +262,11 @@ func NewUserCmd() *cobra.Command {
 
 			// Cleanup
 			if lastTempRepo != "" {
-				_ = scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, lastTempRepo, r.Creds.Password)
-				fmt.Println("[+] Deleted the remote repo")
+				if err := scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, lastTempRepo, r.Creds.Password); err != nil {
+					fmt.Printf("[-] Failed to delete remote repo %s: %v\n", lastTempRepo, err)
+				} else {
+					fmt.Println("[+] Deleted the remote repo")
+				}
 			}
 
 			// Summary
@@ -296,7 +299,9 @@ func NewUserCmd() *cobra.Command {
 			}
 
 			r.TMPrinter.Out("Deleting temp folder...")
-			_ = util.DeleteTmpDir()
+			if err := util.DeleteTmpDir(); err != nil {
+				fmt.Printf("[-] Warning: failed to delete temp folder: %v\n", err)
+			}
 			r.TMPrinter.Clear()
 
 			return nil
