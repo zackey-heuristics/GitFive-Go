@@ -75,7 +75,9 @@ func NewEmailsCmd() *cobra.Command {
 
 			// Cleanup
 			if tempRepoName != "" {
-				_ = scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password)
+				if err := scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to delete temporary repository %s: %v\n", tempRepoName, err)
+				}
 			}
 
 			return nil
