@@ -45,7 +45,7 @@ func CreateRepo(ctx context.Context, client *httpclient.Client, owner, repoName 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == 200 || resp.StatusCode == 302 {
 		return nil
@@ -60,7 +60,7 @@ func DeleteRepo(ctx context.Context, client *httpclient.Client, username, repoNa
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -88,7 +88,7 @@ func DeleteRepo(ctx context.Context, client *httpclient.Client, username, repoNa
 	if err != nil {
 		return err
 	}
-	defer delResp.Body.Close()
+	defer func() { _ = delResp.Body.Close() }()
 
 	if delResp.StatusCode == 200 || delResp.StatusCode == 302 {
 		return nil
@@ -108,7 +108,7 @@ func FetchProfileName(ctx context.Context, client *httpclient.Client, username s
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -132,7 +132,7 @@ func GetOriginalBranchFromCommit(ctx context.Context, client *httpclient.Client,
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {

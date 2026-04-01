@@ -83,9 +83,16 @@ func (c *Credentials) AreLoaded() bool {
 
 // Clean removes credential and session files from disk.
 func (c *Credentials) Clean() error {
-	os.Remove(c.credsPath)
-	os.Remove(c.sessionPath)
-	return nil
+	var firstErr error
+
+	if err := os.Remove(c.credsPath); err != nil && !os.IsNotExist(err) && firstErr == nil {
+		firstErr = err
+	}
+	if err := os.Remove(c.sessionPath); err != nil && !os.IsNotExist(err) && firstErr == nil {
+		firstErr = err
+	}
+
+	return firstErr
 }
 
 func parseFile(path string) map[string]interface{} {

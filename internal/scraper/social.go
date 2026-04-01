@@ -20,7 +20,7 @@ func GetFollows(ctx context.Context, client *httpclient.Client, username, toScra
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
@@ -62,7 +62,7 @@ func GetFollows(ctx context.Context, client *httpclient.Client, username, toScra
 				if err != nil {
 					return err
 				}
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 
 				pageDoc, err := goquery.NewDocumentFromReader(resp.Body)
 				if err != nil {

@@ -35,7 +35,7 @@ const reposHTML = `<html><body>
 
 func TestParseReposPage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, reposHTML)
+		_, _ = fmt.Fprint(w, reposHTML)
 	}))
 	defer srv.Close()
 
@@ -44,7 +44,7 @@ func TestParseReposPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	doc, _ := goquery.NewDocumentFromReader(resp.Body)
 	repos := parseReposPage(doc, "testuser")
