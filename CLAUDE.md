@@ -15,7 +15,7 @@ CGO_ENABLED=0 go build -o bin/gitfive-go ./cmd/gitfive   # Manual build
 
 ## Code Conventions
 
-- Go 1.23+ (minimum required by goquery dependency)
+- Go 1.25+ (minimum version per go.mod)
 - `internal/` for all non-main packages (not importable externally)
 - `context.Context` as first parameter on all functions that do I/O or concurrency
 - Errors returned up the stack; only `internal/commands/` prints and exits
@@ -43,7 +43,10 @@ internal/
   ui/                         — TMPrinter, banner, progress bar
   util/                       — String, domain, file, levenshtein, chunks helpers
 test/                         — E2E tests (binary build + CLI smoke tests)
-scripts/                      — Release script
+scripts/                      — Release helper script
+.github/workflows/ci.yaml    — CI: lint, test, build, cross-compile on push/PR
+.github/workflows/release.yaml — Release: GoReleaser on v* tag push
+.goreleaser.yaml              — GoReleaser configuration
 ```
 
 ## CLI Commands
@@ -56,24 +59,32 @@ gitfive-go emails <file> -t   — Batch email processing
 gitfive-go light <username>   — Quick email discovery from commits
 ```
 
-## Cross-compilation
+## Cross-compilation & Releases
+
+Releases are automated via GitHub Actions + GoReleaser:
 
 ```bash
-# All platforms (via release script)
-./scripts/release.sh v0.1.0
+# Tag a release (triggers CI → GoReleaser → GitHub Release)
+git tag v0.1.0
+git push origin v0.1.0
 
-# Manual single platform
+# Manual single platform build
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o gitfive-go-linux-arm64 ./cmd/gitfive
 ```
 
+Target platforms: linux/amd64, linux/arm64, darwin/arm64, windows/amd64, windows/arm64
+
+## CI/CD
+
+- **CI** (`ci.yaml`): Runs on every push and PR — lint (golangci-lint v2), test, build, cross-compile
+- **Release** (`release.yaml`): Runs on `v*` tag push — lint, test, then GoReleaser builds and publishes GitHub Release
+
 ## Open Issues
 
-- #3 Update CLAUDE.md Go version reference
 - #4 Tighten DeleteTmpDir error handling
 - #5 Use OS keyring for credentials
 - #6 Avoid token exposure in git clone argv
 - #7 ExtractDomain should strip port numbers
-- #8 CI/CD for cross-compilation and automated releases
 
 ## Do NOT
 

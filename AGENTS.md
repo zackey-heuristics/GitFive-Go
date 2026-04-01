@@ -42,7 +42,7 @@
 
 ## Release Process
 
-1. All tests pass
-2. `./scripts/release.sh <version>` builds binaries and creates GitHub Release
-3. Target platforms: linux/amd64, linux/arm64, darwin/arm64, windows/amd64, windows/arm64
-4. Future: GitHub Actions CI/CD (#8) to automate this on tag push
+1. All tests pass (CI runs automatically on push)
+2. Tag the release: `git tag v<version> && git push origin v<version>`
+3. GitHub Actions triggers GoReleaser — builds binaries and creates GitHub Release
+4. Target platforms: linux/amd64, linux/arm64, darwin/arm64, windows/amd64, windows/arm64
