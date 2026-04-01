@@ -3,66 +3,46 @@
 ## Roles
 
 ### Claude Code (Planner / Orchestrator)
-- Owns the implementation plan and phase sequencing
-- Reviews Codex output and decides whether to iterate or advance
-- Creates prompts for Codex with full context (Python source, Go target path, interfaces from prior phases)
-- Handles architectural decisions and trade-off analysis
+- Owns architecture decisions and implementation planning
+- Reviews Codex output and decides whether to iterate or ship
+- Creates GitHub Issues and PRs
+- Handles code review triage (Copilot review analysis, adversarial review)
 
 ### Codex (Implementer / Reviewer)
-- Executes implementation tasks per phase
-- Performs code review and adversarial review on generated code
-- Each task receives: target file path, Python source being ported, Go types/interfaces it depends on, test file to generate
+- Executes implementation tasks with full context
+- Performs adversarial review on generated code
+- Each task receives: goal, target file paths, existing code context, test requirements
 
-## Iteration Loop
+## Workflow
 
 ```
-1. Claude Code prepares a phase prompt with full context
-2. Codex implements the code + tests
-3. Codex reviews its own output (self-review)
-4. Claude Code runs adversarial review via Codex (separate prompt focusing on bugs, race conditions, missing edge cases)
-5. If issues found → Codex fixes → back to step 3
-6. If clean → Claude Code advances to next phase
+1. Claude Code plans the task and prepares context
+2. Claude Code or Codex implements the code + tests
+3. Run tests: go test -race ./internal/... ./test/...
+4. Codex adversarial review (/codex:adversarial-review)
+5. If issues found → fix → back to step 3
+6. If clean → commit, push, PR
 ```
-
-## Phase Execution Protocol
-
-For each phase, Claude Code provides Codex with:
-
-1. **Goal**: What this phase accomplishes
-2. **Python source**: The exact Python files being ported (read and included in prompt)
-3. **Go target paths**: Where to write the Go files
-4. **Dependencies**: Go types/interfaces from prior phases that this code uses
-5. **Test requirements**: What tests to write and what fixtures to use
-6. **Constraints**: CGO_ENABLED=0, error handling patterns, context threading
 
 ## Review Criteria
 
-### Standard Review (after implementation)
-- Correctness: Does the Go code match Python behavior?
-- Idiomatic Go: proper error handling, context usage, naming conventions
-- Concurrency safety: mutex usage, channel safety, race conditions
+### Standard Review
+- Correctness: Does the code work as intended?
+- Idiomatic Go: error handling, context usage, naming conventions
+- Concurrency safety: mutex usage, race conditions
 - No CGO dependencies
+- Tests pass with -race
 
-### Adversarial Review (separate pass)
+### Adversarial Review
 - Race conditions under concurrent access
 - Resource leaks (HTTP clients, file handles, goroutines)
 - Error paths that silently swallow failures
 - Missing context cancellation checks
-- Hardcoded values that should be configurable
-- Security: credential handling, input sanitization
+- Security: credential handling, token exposure, input sanitization
 
-## Phase Order (dependency chain)
+## Release Process
 
-```
-Phase 0: Scaffolding (no deps)
-Phase 1: Config + Utils (no deps)
-Phase 2: HTTP Client + UI (no deps)
-Phase 3: Auth (depends on: Phase 2)
-Phase 4: API (depends on: Phase 2, 3)
-Phase 5: Models + Runner (depends on: Phase 2, 3, 4)
-Phase 6: Scrapers (depends on: Phase 2, 4, 5)
-Phase 7: Analysis (depends on: Phase 5, 6)
-Phase 8: Commands/CLI (depends on: all above)
-Phase 9: Image + Version (depends on: Phase 2)
-Phase 10: Polish + Release (depends on: all above)
-```
+1. All tests pass
+2. `./scripts/release.sh <version>` builds binaries and creates GitHub Release
+3. Target platforms: linux/amd64, linux/arm64, darwin/arm64, windows/amd64, windows/arm64
+4. Future: GitHub Actions CI/CD (#8) to automate this on tag push
