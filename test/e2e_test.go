@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// binaryPath builds the gitfive binary and returns its path.
+// binaryPath builds the gitfive-go binary and returns its path.
 func binaryPath(t *testing.T) string {
 	t.Helper()
-	binary := t.TempDir() + "/gitfive"
+	binary := t.TempDir() + "/gitfive-go"
 	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", binary, "../cmd/gitfive")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build failed: %v\n%s", err, out)
@@ -27,7 +27,7 @@ func TestVersionFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--version failed: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "gitfive version") {
+	if !strings.Contains(string(out), "gitfive-go version") {
 		t.Errorf("expected version output, got: %s", out)
 	}
 }

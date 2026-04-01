@@ -1,7 +1,7 @@
 builds:
   - id: gitfive
     main: ./cmd/gitfive
-    binary: gitfive
+    binary: gitfive-go
     env:
       - CGO_ENABLED=0
     goos:

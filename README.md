@@ -28,7 +28,7 @@ cd GitFive-Go
 make build
 ```
 
-The binary will be at `bin/gitfive`.
+The binary will be at `bin/gitfive-go`.
 
 ### Requirements
 
@@ -39,14 +39,14 @@ The binary will be at `bin/gitfive`.
 First, login to GitHub *(preferably with a secondary account)*:
 
 ```bash
-gitfive login
+gitfive-go login
 ```
 
 Then:
 
 ```
 Usage:
-  gitfive [command]
+  gitfive-go [command]
 
 Available Commands:
   login       Authenticate to GitHub
@@ -56,27 +56,27 @@ Available Commands:
   light       Quickly find email addresses from a GitHub username
 
 Flags:
-  -h, --help      help for gitfive
-  -v, --version   version for gitfive
+  -h, --help      help for gitfive-go
+  -v, --version   version for gitfive-go
 ```
 
 ### Examples
 
 ```bash
 # Full reconnaissance on a user
-gitfive user <username>
+gitfive-go user <username>
 
 # Export results as JSON
-gitfive user <username> --json output.json
+gitfive-go user <username> --json output.json
 
 # Quick email discovery
-gitfive light <username>
+gitfive-go light <username>
 
 # Reverse email lookup
-gitfive email <email_address>
+gitfive-go email <email_address>
 
 # Batch email lookup
-gitfive emails emails.txt -t <target_username>
+gitfive-go emails emails.txt -t <target_username>
 ```
 
 ## Building
@@ -92,9 +92,9 @@ make clean          # Remove build artifacts
 Static binaries for all platforms are built with `CGO_ENABLED=0`:
 
 ```bash
-GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -o gitfive-linux-amd64   ./cmd/gitfive
-GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build -o gitfive-darwin-arm64   ./cmd/gitfive
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o gitfive-windows-amd64.exe ./cmd/gitfive
+GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -o gitfive-go-linux-amd64       ./cmd/gitfive
+GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build -o gitfive-go-darwin-arm64       ./cmd/gitfive
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o gitfive-go-windows-amd64.exe  ./cmd/gitfive
 ```
 
 ## Credits
