@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/zackey-heuristics/gitfive-go/internal/gitcred"
 	"github.com/zackey-heuristics/gitfive-go/internal/models"
 	"github.com/zackey-heuristics/gitfive-go/internal/ui"
 	"github.com/zackey-heuristics/gitfive-go/internal/util"
@@ -24,8 +25,10 @@ type RepoAnalysisResult struct {
 	UsernamesHistory map[string]*models.ContribEntry
 }
 
-// AnalyzeRepo clones and analyzes a single git repository.
-func AnalyzeRepo(ctx context.Context, token, targetUsername string, targetID int, reposFolder string, repoName string) (*RepoAnalysisResult, error) {
+// AnalyzeRepo clones and analyzes a single git repository. Authentication is
+// supplied via GIT_ASKPASS (see internal/gitcred), so the function does not
+// take a token argument.
+func AnalyzeRepo(ctx context.Context, targetUsername string, targetID int, reposFolder string, repoName string) (*RepoAnalysisResult, error) {
 	result := &RepoAnalysisResult{
 		Repo:             repoName,
 		AllContribs:      make(map[string]*models.ContribEntry),
@@ -34,11 +37,21 @@ func AnalyzeRepo(ctx context.Context, token, targetUsername string, targetID int
 	}
 
 	repoID := fmt.Sprintf("%s/%s", targetUsername, repoName)
-	repoURL := fmt.Sprintf("https://%s:x-oauth-basic@github.com/%s", token, repoID)
+	// Token-less URL: authentication is delivered via GIT_ASKPASS so the
+	// secret never appears in argv (`ps`) or in the cloned repo's stored
+	// remote URL. See internal/gitcred for the helper plumbing.
+	repoURL := fmt.Sprintf("https://github.com/%s", repoID)
 	repoPath := filepath.Join(reposFolder, repoName)
 
 	// Clone with partial filter
-	cmd := exec.CommandContext(ctx, "git", "clone", "--filter=tree:0", "--no-checkout", repoURL, repoPath)
+	cmd, err := gitcred.CommandWithToken(ctx, "git", "clone", "--filter=tree:0", "--no-checkout", repoURL, repoPath)
+	if err != nil {
+		// Non-fatal: continue analysis with whatever we already have on
+		// disk, but surface the diagnosis so a misconfigured environment
+		// doesn't silently produce empty xray output for every repo.
+		fmt.Fprintf(os.Stderr, "[xray] warning: cannot configure askpass for %s: %v\n", repoID, err)
+		return result, nil
+	}
 	_ = cmd.Run() // Ignore error — may fail on checkout but commits are cloned
 
 	// Check if repo has any refs
@@ -107,8 +120,10 @@ func addContrib(contribs map[string]*models.ContribEntry, email, name, repoID st
 	contribs[email].Names.Add(name)
 }
 
-// XrayAnalyze runs deep analysis on all source repos.
-func XrayAnalyze(ctx context.Context, token, targetUsername string, targetID int,
+// XrayAnalyze runs deep analysis on all source repos. Authentication for the
+// underlying git clones flows through GIT_ASKPASS (see internal/gitcred), so
+// no token is passed in.
+func XrayAnalyze(ctx context.Context, targetUsername string, targetID int,
 	repos []models.RepoDetails) ([]*RepoAnalysisResult, error) {
 
 	dir, err := util.GitfiveDir()
@@ -139,7 +154,7 @@ func XrayAnalyze(ctx context.Context, token, targetUsername string, targetID int
 	for _, repo := range sourceRepos {
 		repo := repo
 		g.Go(func() error {
-			result, err := AnalyzeRepo(ctx, token, targetUsername, targetID, reposFolder, repo.Name)
+			result, err := AnalyzeRepo(ctx, targetUsername, targetID, reposFolder, repo.Name)
 			if err != nil {
 				return err
 			}
