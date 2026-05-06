@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/zackey-heuristics/gitfive-go/internal/httpclient"
 	"github.com/zackey-heuristics/gitfive-go/internal/scraper"
 	"github.com/zackey-heuristics/gitfive-go/internal/ui"
 	"github.com/zackey-heuristics/gitfive-go/internal/util"
@@ -18,7 +17,7 @@ import (
 
 // StartMetamon creates a temporary repo with spoofed email commits and pushes it.
 // Returns the temp repo name and a map of commit_hash -> email.
-func StartMetamon(ctx context.Context, client *httpclient.Client, owner, token string, emails []string) (string, map[string]string, error) {
+func StartMetamon(ctx context.Context, owner, token string, emails []string) (string, map[string]string, error) {
 	if len(emails) == 0 {
 		return "", nil, nil
 	}
@@ -26,7 +25,7 @@ func StartMetamon(ctx context.Context, client *httpclient.Client, owner, token s
 	tempRepoName := "gitfive-tmp-" + uuid.New().String()[:8]
 
 	// Create remote repo
-	if err := scraper.CreateRepo(ctx, client, owner, tempRepoName); err != nil {
+	if err := scraper.CreateRepo(ctx, token, tempRepoName); err != nil {
 		return "", nil, fmt.Errorf("metamon: create repo: %w", err)
 	}
 

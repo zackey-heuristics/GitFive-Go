@@ -7,98 +7,112 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 
 	"github.com/zackey-heuristics/gitfive-go/internal/httpclient"
 )
 
-// CreateRepo creates a private GitHub repository via the web interface.
-//
-// This deliberately uses the cookie-authenticated web UI rather than the REST
-// API so the fine-grained PAT does not need the "Administration: Write"
-// permission. If you ever port this to the API, update the documented
-// fine-grained PAT permission set in README.md accordingly.
-func CreateRepo(ctx context.Context, client *httpclient.Client, owner, repoName string) error {
-	payload := map[string]interface{}{
-		"owner":                   owner,
-		"template_repository_id":  "",
-		"include_all_branches":    "0",
-		"repository": map[string]string{
-			"name":               repoName,
-			"visibility":         "private",
-			"description":        "",
-			"auto_init":          "0",
-			"license_template":   "",
-			"gitignore_template": "",
-		},
-	}
-	body, _ := json.Marshal(payload)
+// githubAPIBase is the REST API endpoint. Tests may override this, but only
+// before any goroutine using CreateRepo/DeleteRepo runs (i.e. in TestMain or
+// at the top of a non-parallel test).
+var githubAPIBase = "https://api.github.com"
 
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://github.com/repositories", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Github-Verified-Fetch", "true")
-	req.Header.Set("Origin", "https://github.com")
+// apiHTTPClient enforces an explicit timeout because http.DefaultClient has
+// none; combined with request-context cancellation it bounds worst-case wait
+// even for misbehaving connections.
+var apiHTTPClient = &http.Client{Timeout: 60 * time.Second}
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
+// errBadIdent is returned when an owner/repo name contains URL-significant
+// characters that would change which endpoint we actually hit.
+var errBadIdent = fmt.Errorf("owner or repo name contains forbidden characters")
 
-	if resp.StatusCode == 200 || resp.StatusCode == 302 {
-		return nil
-	}
-	respBody, _ := io.ReadAll(resp.Body)
-	return fmt.Errorf("couldn't create repo %q (status %d): %s", repoName, resp.StatusCode, string(respBody))
+func setGitHubAPIHeaders(req *http.Request, token string) {
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 }
 
-// DeleteRepo deletes a GitHub repository via the web settings form.
-func DeleteRepo(ctx context.Context, client *httpclient.Client, username, repoName, password string) error {
-	resp, err := client.Get(ctx, fmt.Sprintf("https://github.com/%s/%s/settings", username, repoName))
+// validateRepoIdent rejects names that would alter the URL path (slash) or
+// inject query/fragment components. GitHub's own naming rules forbid these
+// already, but the check defends against accidental misuse from callers.
+func validateRepoIdent(s string) error {
+	if s == "" {
+		return errBadIdent
+	}
+	if strings.ContainsAny(s, "/?#") {
+		return errBadIdent
+	}
+	return nil
+}
+
+// maxErrorBodyBytes caps how much of an API error response we read into
+// memory and surface in the error message.
+const maxErrorBodyBytes = 4096
+
+// CreateRepo creates a private repository owned by the authenticated user via
+// `POST /user/repos`. Requires a fine-grained PAT with Administration: Write
+// on All repositories.
+func CreateRepo(ctx context.Context, token, repoName string) error {
+	if err := validateRepoIdent(repoName); err != nil {
+		return fmt.Errorf("create repo %q: %w", repoName, err)
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"name":      repoName,
+		"private":   true,
+		"auto_init": false,
+	})
+
+	req, err := http.NewRequestWithContext(ctx, "POST", githubAPIBase+"/user/repos", bytes.NewReader(payload))
 	if err != nil {
 		return err
+	}
+	setGitHubAPIHeaders(req, token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := apiHTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("create repo %q: %w", repoName, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	action := fmt.Sprintf("/%s/%s/settings/delete", username, repoName)
-	form := doc.Find(fmt.Sprintf(`form[action="%s"]`, action))
-	token, _ := form.Find(`input[name="authenticity_token"]`).Attr("value")
-	if token == "" {
-		return fmt.Errorf("couldn't find delete form for repo %q", repoName)
-	}
-
-	formData := url.Values{
-		"_method":              {"delete"},
-		"authenticity_token":   {token},
-		"repository":          {repoName},
-		"sudo_referrer":       {fmt.Sprintf("https://github.com/%s/%s/settings", username, repoName)},
-		"user_id":             {username},
-		"verify":              {fmt.Sprintf("%s/%s", username, repoName)},
-		"sudo_password":       {password},
-	}
-
-	delResp, err := client.PostForm(ctx, fmt.Sprintf("https://github.com/%s/%s/settings/delete", username, repoName), formData)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = delResp.Body.Close() }()
-
-	if delResp.StatusCode == 200 || delResp.StatusCode == 302 {
+	if resp.StatusCode == http.StatusCreated {
 		return nil
 	}
-	return fmt.Errorf("couldn't delete repo %q (status %d)", repoName, delResp.StatusCode)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+	return fmt.Errorf("couldn't create repo %q (status %d): %s", repoName, resp.StatusCode, string(body))
+}
+
+// DeleteRepo deletes a repository via `DELETE /repos/{owner}/{repo}`. Requires
+// a fine-grained PAT with Administration: Write on the target repo.
+func DeleteRepo(ctx context.Context, token, owner, repoName string) error {
+	if err := validateRepoIdent(owner); err != nil {
+		return fmt.Errorf("delete repo %q: %w", repoName, err)
+	}
+	if err := validateRepoIdent(repoName); err != nil {
+		return fmt.Errorf("delete repo %q: %w", repoName, err)
+	}
+	endpoint := fmt.Sprintf("%s/repos/%s/%s", githubAPIBase, owner, repoName)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", endpoint, nil)
+	if err != nil {
+		return err
+	}
+	setGitHubAPIHeaders(req, token)
+
+	resp, err := apiHTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("delete repo %q: %w", repoName, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+	return fmt.Errorf("couldn't delete repo %q (status %d): %s", repoName, resp.StatusCode, string(body))
 }
 
 // FetchProfileName uses GitHub hovercards to fetch the display name for a username.

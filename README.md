@@ -44,7 +44,7 @@ gitfive-go login
 
 ### GitHub authentication token
 
-GitFive-Go requires a **fine-grained personal access token** (token starts with `github_pat_`). Classic PATs (`ghp_*`) and OAuth/server tokens are not accepted.
+GitFive-Go authenticates with a single **fine-grained personal access token** (token starts with `github_pat_`). No GitHub username, password, or 2FA challenge is required — the token is the only secret you provide. Classic PATs (`ghp_*`) and OAuth/server tokens are rejected.
 
 Create one at <https://github.com/settings/tokens?type=beta> with the following settings:
 
@@ -52,6 +52,7 @@ Create one at <https://github.com/settings/tokens?type=beta> with the following 
 - **Repository access**: **All repositories** (required — the tool creates a private temporary repository at runtime, which "Selected repositories" cannot cover)
 - **Repository permissions**:
   - **Contents**: Read and write
+  - **Administration**: Read and write
   - **Metadata**: Read
 
 All other permissions can be left at "No access". Fine-grained PATs require an expiration date (max 1 year); GitFive-Go warns when the token is within 30 days of expiry, and you must regenerate it before then.
