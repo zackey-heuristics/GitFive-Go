@@ -163,11 +163,11 @@ func NewUserCmd() *cobra.Command {
 
 			if len(emailCandidates) > 0 {
 				fmt.Println("[XRAY] Impersonating users from dumped commits...")
-				tempRepoName, emailsIndex, err := analysis.StartMetamon(ctx, r.Client, r.Creds.Username, r.Creds.Token, emailCandidates)
+				tempRepoName, emailsIndex, err := analysis.StartMetamon(ctx, r.Creds.Username, r.Creds.Token, emailCandidates)
 				if err != nil {
 					fmt.Printf("[!] Metamon failed: %v\n", err)
 				} else if emailsIndex != nil {
-					accounts, err := scraper.ScrapeCommits(ctx, r.Client, r.Creds.Username, tempRepoName, emailsIndex, r.Target.Username, true, r.Limiters["commits_scrape"])
+					accounts, err := scraper.ScrapeCommits(ctx, r.Creds.Token, r.Creds.Username, tempRepoName, emailsIndex, r.Target.Username, true, r.Limiters["commits_scrape"])
 					if err == nil {
 						for email, acc := range accounts {
 							r.EmailsAccounts[email] = map[string]interface{}{
@@ -176,7 +176,7 @@ func NewUserCmd() *cobra.Command {
 							}
 						}
 					}
-					_ = scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password)
+					_ = scraper.DeleteRepo(ctx, r.Creds.Token, r.Creds.Username, tempRepoName)
 				}
 			}
 
@@ -201,7 +201,7 @@ func NewUserCmd() *cobra.Command {
 				}
 				fmt.Printf("[+] %d potential email(s) generated!\n", len(emails))
 
-				tempRepoName, emailsIndex, err := analysis.StartMetamon(ctx, r.Client, r.Creds.Username, r.Creds.Token, emails)
+				tempRepoName, emailsIndex, err := analysis.StartMetamon(ctx, r.Creds.Username, r.Creds.Token, emails)
 				lastTempRepo = tempRepoName
 				if err != nil {
 					fmt.Printf("[!] Metamon failed: %v\n", err)
@@ -211,7 +211,7 @@ func NewUserCmd() *cobra.Command {
 					break
 				}
 
-				accounts, err := scraper.ScrapeCommits(ctx, r.Client, r.Creds.Username, tempRepoName, emailsIndex, r.Target.Username, false, r.Limiters["commits_scrape"])
+				accounts, err := scraper.ScrapeCommits(ctx, r.Creds.Token, r.Creds.Username, tempRepoName, emailsIndex, r.Target.Username, false, r.Limiters["commits_scrape"])
 				if err != nil {
 					fmt.Printf("[!] Commits scrape failed: %v\n", err)
 					break
@@ -262,7 +262,7 @@ func NewUserCmd() *cobra.Command {
 
 			// Cleanup
 			if lastTempRepo != "" {
-				if err := scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, lastTempRepo, r.Creds.Password); err != nil {
+				if err := scraper.DeleteRepo(ctx, r.Creds.Token, r.Creds.Username, lastTempRepo); err != nil {
 					fmt.Printf("[-] Failed to delete remote repo %s: %v\n", lastTempRepo, err)
 				} else {
 					fmt.Println("[+] Deleted the remote repo")

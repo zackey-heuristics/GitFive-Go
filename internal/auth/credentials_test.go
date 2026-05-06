@@ -10,45 +10,29 @@ func TestCredentialsSaveLoad(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	creds := &Credentials{
-		Username:    "testuser",
-		Password:    "testpass",
-		Token:       "testtoken",
-		Session:     map[string]string{"session_key": "session_val"},
-		credsPath:   filepath.Join(tmpDir, "creds.m"),
-		sessionPath: filepath.Join(tmpDir, "session.m"),
+		Username:  "testuser",
+		Token:     "github_pat_testtoken",
+		credsPath: filepath.Join(tmpDir, "creds.m"),
 	}
 
 	if err := creds.Save(); err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify files were created
 	if _, err := os.Stat(creds.credsPath); os.IsNotExist(err) {
 		t.Fatal("creds file not created")
 	}
-	if _, err := os.Stat(creds.sessionPath); os.IsNotExist(err) {
-		t.Fatal("session file not created")
-	}
 
-	// Load into new instance
 	creds2 := &Credentials{
-		Session:     make(map[string]string),
-		credsPath:   creds.credsPath,
-		sessionPath: creds.sessionPath,
+		credsPath: creds.credsPath,
 	}
 	creds2.Load()
 
 	if creds2.Username != "testuser" {
 		t.Errorf("expected username 'testuser', got %q", creds2.Username)
 	}
-	if creds2.Password != "testpass" {
-		t.Errorf("expected password 'testpass', got %q", creds2.Password)
-	}
-	if creds2.Token != "testtoken" {
-		t.Errorf("expected token 'testtoken', got %q", creds2.Token)
-	}
-	if creds2.Session["session_key"] != "session_val" {
-		t.Errorf("expected session key, got %v", creds2.Session)
+	if creds2.Token != "github_pat_testtoken" {
+		t.Errorf("expected token 'github_pat_testtoken', got %q", creds2.Token)
 	}
 }
 
@@ -58,27 +42,22 @@ func TestAreLoaded(t *testing.T) {
 		t.Error("empty creds should not be loaded")
 	}
 
-	creds.Username = "u"
-	creds.Password = "p"
-	creds.Token = "t"
+	creds.Token = "github_pat_xxx"
 	if !creds.AreLoaded() {
-		t.Error("creds with all fields should be loaded")
+		t.Error("creds with a token should be loaded")
 	}
 }
 
 func TestClean(t *testing.T) {
 	tmpDir := t.TempDir()
 	credsPath := filepath.Join(tmpDir, "creds.m")
-	sessionPath := filepath.Join(tmpDir, "session.m")
 
-	_ = os.WriteFile(credsPath, []byte("data"), 0o600)
-	if err := os.WriteFile(sessionPath, []byte("data"), 0o600); err != nil {
+	if err := os.WriteFile(credsPath, []byte("data"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	creds := &Credentials{
-		credsPath:   credsPath,
-		sessionPath: sessionPath,
+		credsPath: credsPath,
 	}
 	if err := creds.Clean(); err != nil {
 		t.Fatal(err)
@@ -87,7 +66,14 @@ func TestClean(t *testing.T) {
 	if _, err := os.Stat(credsPath); !os.IsNotExist(err) {
 		t.Error("creds file should be deleted")
 	}
-	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
-		t.Error("session file should be deleted")
+}
+
+func TestCleanIgnoresMissingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	creds := &Credentials{
+		credsPath: filepath.Join(tmpDir, "missing.m"),
+	}
+	if err := creds.Clean(); err != nil {
+		t.Errorf("Clean on missing file should be a no-op, got %v", err)
 	}
 }

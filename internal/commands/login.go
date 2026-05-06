@@ -6,12 +6,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/zackey-heuristics/gitfive-go/internal/auth"
-	"github.com/zackey-heuristics/gitfive-go/internal/httpclient"
 )
 
 // NewLoginCmd creates the "login" subcommand.
 func NewLoginCmd() *cobra.Command {
 	var clean bool
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -24,38 +24,32 @@ func NewLoginCmd() *cobra.Command {
 
 			if clean {
 				_ = creds.Clean()
-				fmt.Println("[+] Credentials and session files deleted!")
+				fmt.Println("[+] Credentials file deleted!")
 				return nil
 			}
 
-			client := httpclient.New()
 			creds.Load()
 
-			if len(creds.Session) > 0 {
-				client.SetCookies("https://github.com", creds.Session)
-			}
-
-			valid, _ := auth.CheckSession(cmd.Context(), client)
-			if valid {
-				fmt.Println("[+] Creds are working!")
-				fmt.Print("Do you want to re-login anyway? (Y/n): ")
-				var choice string
-				_, _ = fmt.Scanln(&choice)
-				if choice == "" || choice == "y" || choice == "Y" {
-					fmt.Println()
-					creds2, _ := auth.NewCredentials()
-					client2 := httpclient.New()
-					return auth.Login(cmd.Context(), creds2, client2, true)
+			if !force && creds.AreLoaded() {
+				fmt.Println("[+] Existing token found, validating...")
+				if err := auth.CheckToken(creds); err == nil {
+					fmt.Print("Do you want to re-authenticate anyway? (y/N): ")
+					var choice string
+					_, _ = fmt.Scanln(&choice)
+					if choice != "y" && choice != "Y" {
+						fmt.Println("Bye!")
+						return nil
+					}
+				} else {
+					fmt.Printf("[-] Saved token is no longer valid: %v\n", err)
 				}
-				fmt.Println("\nBye!")
-				return nil
 			}
 
-			fmt.Println("[-] Creds aren't active anymore. Relogin...")
-			return auth.Login(cmd.Context(), creds, client, false)
+			return auth.Login(creds, true)
 		},
 	}
 
-	cmd.Flags().BoolVar(&clean, "clean", false, "Clear credentials and session files")
+	cmd.Flags().BoolVar(&clean, "clean", false, "Clear the credentials file")
+	cmd.Flags().BoolVar(&force, "force", false, "Re-authenticate even if a valid token is already saved")
 	return cmd
 }

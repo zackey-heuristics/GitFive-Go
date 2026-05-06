@@ -20,13 +20,17 @@ func ChangePermissions(path string) error {
 	})
 }
 
-// DeleteTmpDir removes the gitfive temp directory at ~/.malfrats/gitfive/.tmp.
+// gitfiveDirName is the on-disk directory name (under $HOME) used for
+// credentials, sessions, and per-target temp data.
+const gitfiveDirName = ".gitfive_go"
+
+// DeleteTmpDir removes the gitfive temp directory at ~/.gitfive_go/.tmp.
 func DeleteTmpDir() error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
-	tmpDir := filepath.Join(home, ".malfrats", "gitfive", ".tmp")
+	tmpDir := filepath.Join(home, gitfiveDirName, ".tmp")
 	if err := ChangePermissions(tmpDir); err != nil {
 		// Directory might not exist, that's fine
 		return nil
@@ -34,13 +38,13 @@ func DeleteTmpDir() error {
 	return os.RemoveAll(tmpDir)
 }
 
-// GitfiveDir returns the base gitfive config directory (~/.malfrats/gitfive).
+// GitfiveDir returns the base gitfive config directory (~/.gitfive_go).
 func GitfiveDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(home, ".malfrats", "gitfive")
+	dir := filepath.Join(home, gitfiveDirName)
 	if err := EnsureDir(dir); err != nil {
 		return "", err
 	}

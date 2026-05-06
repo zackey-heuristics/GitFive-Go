@@ -54,14 +54,14 @@ func NewEmailsCmd() *cobra.Command {
 
 			fmt.Printf("Processing %d email(s)...\n", len(emails))
 
-			tempRepoName, emailsIndex, err := analysis.StartMetamon(ctx, r.Client, r.Creds.Username, r.Creds.Token, emails)
+			tempRepoName, emailsIndex, err := analysis.StartMetamon(ctx, r.Creds.Username, r.Creds.Token, emails)
 			if err != nil {
 				return fmt.Errorf("metamon failed: %w", err)
 			}
 
 			targetUsername := target
 			if emailsIndex != nil {
-				accounts, err := scraper.ScrapeCommits(ctx, r.Client, r.Creds.Username, tempRepoName, emailsIndex, targetUsername, false, r.Limiters["commits_scrape"])
+				accounts, err := scraper.ScrapeCommits(ctx, r.Creds.Token, r.Creds.Username, tempRepoName, emailsIndex, targetUsername, false, r.Limiters["commits_scrape"])
 				if err == nil {
 					for email, acc := range accounts {
 						marker := ""
@@ -75,7 +75,7 @@ func NewEmailsCmd() *cobra.Command {
 
 			// Cleanup
 			if tempRepoName != "" {
-				if err := scraper.DeleteRepo(ctx, r.Client, r.Creds.Username, tempRepoName, r.Creds.Password); err != nil {
+				if err := scraper.DeleteRepo(ctx, r.Creds.Token, r.Creds.Username, tempRepoName); err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to delete temporary repository %s: %v\n", tempRepoName, err)
 				}
 			}

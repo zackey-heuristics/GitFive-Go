@@ -67,17 +67,21 @@ func New() (*Runner, error) {
 	}, nil
 }
 
-// Login loads credentials, validates the session, and initializes the API.
+// Login loads credentials, validates the token, and initializes the API.
 func (r *Runner) Login(ctx context.Context) error {
+	_ = ctx // kept for signature stability; CheckToken does not need it
 	r.Creds.Load()
 
-	// Apply saved session cookies
-	if len(r.Creds.Session) > 0 {
-		r.Client.SetCookies("https://github.com", r.Creds.Session)
+	if !r.Creds.AreLoaded() {
+		return fmt.Errorf("no credentials found — run `gitfive-go login` first")
 	}
-
-	if err := auth.CheckAndLogin(ctx, r.Creds, r.Client); err != nil {
-		return fmt.Errorf("login failed: %w", err)
+	if err := auth.CheckToken(r.Creds); err != nil {
+		return fmt.Errorf("token check failed: %w", err)
+	}
+	// CheckToken should always populate Username from the /user response;
+	// guard against any future code path that succeeds without setting it.
+	if r.Creds.Username == "" {
+		return fmt.Errorf("token valid but username not resolved; re-run `gitfive-go login`")
 	}
 
 	r.API = api.NewInterface(r.Creds, r.TMPrinter)
