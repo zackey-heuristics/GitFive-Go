@@ -134,13 +134,10 @@ func TestCommandWithToken_NoTokenInArgsOrEnv(t *testing.T) {
 	for _, kv := range cmd.Env {
 		switch {
 		case strings.HasPrefix(kv, "GIT_ASKPASS="):
+			// We only need GIT_ASKPASS to resolve to *some* path; go test
+			// produces a binary under `go-build/...` whose exact name is
+			// not stable, so we don't pin it.
 			seenAskpass = true
-			if !strings.HasSuffix(kv, "/gitcred.test") &&
-				!strings.HasSuffix(kv, "/gitcred.test.exe") &&
-				!strings.Contains(kv, "go-build") {
-				// Allow whatever go test produces as the test binary path;
-				// we only care that GIT_ASKPASS resolves to a real path.
-			}
 		case kv == askpassEnvSentinel+"=1":
 			seenSentinel = true
 		case kv == "GIT_TERMINAL_PROMPT=0":
