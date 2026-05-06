@@ -111,8 +111,11 @@ func addContrib(contribs map[string]*models.ContribEntry, email, name, repoID st
 func XrayAnalyze(ctx context.Context, token, targetUsername string, targetID int,
 	repos []models.RepoDetails) ([]*RepoAnalysisResult, error) {
 
-	home, _ := os.UserHomeDir()
-	reposFolder := filepath.Join(home, ".malfrats", "gitfive", ".tmp", targetUsername, "repos")
+	dir, err := util.GitfiveDir()
+	if err != nil {
+		return nil, fmt.Errorf("locate gitfive dir: %w", err)
+	}
+	reposFolder := filepath.Join(dir, ".tmp", targetUsername, "repos")
 	if err := os.MkdirAll(reposFolder, 0o755); err != nil {
 		return nil, fmt.Errorf("create repos folder: %w", err)
 	}

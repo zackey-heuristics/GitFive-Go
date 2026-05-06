@@ -17,6 +17,11 @@ import (
 )
 
 // CreateRepo creates a private GitHub repository via the web interface.
+//
+// This deliberately uses the cookie-authenticated web UI rather than the REST
+// API so the fine-grained PAT does not need the "Administration: Write"
+// permission. If you ever port this to the API, update the documented
+// fine-grained PAT permission set in README.md accordingly.
 func CreateRepo(ctx context.Context, client *httpclient.Client, owner, repoName string) error {
 	payload := map[string]interface{}{
 		"owner":                   owner,

@@ -42,6 +42,28 @@ First, login to GitHub *(preferably with a secondary account)*:
 gitfive-go login
 ```
 
+### GitHub authentication token
+
+GitFive-Go requires a **fine-grained personal access token** (token starts with `github_pat_`). Classic PATs (`ghp_*`) and OAuth/server tokens are not accepted.
+
+Create one at <https://github.com/settings/tokens?type=beta> with the following settings:
+
+- **Resource owner**: yourself
+- **Repository access**: **All repositories** (required — the tool creates a private temporary repository at runtime, which "Selected repositories" cannot cover)
+- **Repository permissions**:
+  - **Contents**: Read and write
+  - **Metadata**: Read
+
+All other permissions can be left at "No access". Fine-grained PATs require an expiration date (max 1 year); GitFive-Go warns when the token is within 30 days of expiry, and you must regenerate it before then.
+
+> **Note**: the token is currently embedded in `git clone` / `git push` URLs as `https://<token>:x-oauth-basic@github.com/...`, which exposes it to local process listings (`ps`) and shell history. This is a known issue tracked in [#6](https://github.com/zackey-heuristics/GitFive-Go/issues/6). Run GitFive-Go on a single-user host you trust until #6 is fixed.
+
+Documentation: <https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token>
+
+### On-disk state
+
+Credentials, sessions, and per-target temp data are stored under `~/.gitfive_go/`. Delete that directory to fully reset.
+
 Then:
 
 ```

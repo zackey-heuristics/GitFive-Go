@@ -16,8 +16,18 @@ import (
 
 	"github.com/zackey-heuristics/gitfive-go/internal/httpclient"
 	"github.com/zackey-heuristics/gitfive-go/internal/ui"
-	"github.com/zackey-heuristics/gitfive-go/internal/util"
 )
+
+const (
+	fineGrainedTokenPrefix  = "github_pat_"
+	finePATDocsURL          = "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token"
+	finePATSettingsURL      = "https://github.com/settings/tokens?type=beta"
+	expiryWarnThresholdDays = 30
+)
+
+// classicTokenPrefixes lists token-prefix patterns that this tool no longer
+// accepts (classic PATs and server-side OAuth tokens).
+var classicTokenPrefixes = []string{"ghp_", "gho_", "ghs_", "ghu_", "ghr_"}
 
 // PromptCreds interactively asks the user for username, password, and token.
 func PromptCreds(creds *Credentials) {
@@ -31,20 +41,118 @@ func PromptCreds(creds *Credentials) {
 		fmt.Println()
 		creds.Password = string(pw)
 	}
-	fmt.Println(`The API token requires the "repo" and "delete_repo" scopes.`)
-	fmt.Println("See: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token")
+	fmt.Println("Create a fine-grained personal access token (token starts with `github_pat_`):")
+	fmt.Println("  - Resource owner: yourself")
+	fmt.Println("  - Repository access: All repositories")
+	fmt.Println("  - Repository permissions: Contents = Read and write, Metadata = Read")
+	fmt.Println("See:", finePATDocsURL)
 	for creds.Token == "" {
 		fmt.Print("API Token => ")
 		tok, _ := term.ReadPassword(int(inputFd()))
 		fmt.Println()
-		creds.Token = string(tok)
+		creds.Token = strings.TrimSpace(string(tok))
 	}
 	fmt.Println()
 }
 
-// CheckToken validates the API token against GitHub and checks required scopes.
+// minFineGrainedTokenLen is a sanity floor; real fine-grained PATs are
+// around 90+ characters. Anything shorter is almost certainly malformed.
+const minFineGrainedTokenLen = 40
+
+// validateTokenPrefix accepts only fine-grained PATs and rejects classic /
+// server-issued tokens with an actionable error message. The caller is
+// expected to have already trimmed the token, but we trim defensively to
+// avoid surprises from pasted whitespace.
+func validateTokenPrefix(token string) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return fmt.Errorf("token is empty")
+	}
+	for _, p := range classicTokenPrefixes {
+		if strings.HasPrefix(token, p) {
+			return fmt.Errorf(
+				"classic or server token detected (prefix %q); GitFive-Go now requires a fine-grained PAT (prefix \"github_pat_\"). Create one at %s",
+				p, finePATSettingsURL,
+			)
+		}
+	}
+	if !strings.HasPrefix(token, fineGrainedTokenPrefix) {
+		return fmt.Errorf(
+			"unrecognized token format; GitFive-Go requires a fine-grained PAT (prefix \"github_pat_\"). Create one at %s",
+			finePATSettingsURL,
+		)
+	}
+	if len(token) < minFineGrainedTokenLen {
+		return fmt.Errorf("token is implausibly short (%d chars); fine-grained PATs are much longer — re-paste it", len(token))
+	}
+	return nil
+}
+
+// expirationWarning returns a one-line warning if the fine-grained PAT
+// expiration is within expiryWarnThresholdDays (or already past). Empty
+// string means "no warning" (header missing, unparseable, or far enough away).
+func expirationWarning(headerVal string, now time.Time) string {
+	if headerVal == "" {
+		return ""
+	}
+	// GitHub's documented format is "2026-05-18 12:00:00 UTC". Accept that
+	// (literal UTC suffix) plus a numeric-offset variant and RFC3339.
+	// Avoid the Go `MST` layout token: time.Parse silently assigns offset 0
+	// to non-UTC three-letter abbreviations it doesn't know, which would
+	// corrupt expiry math if the upstream format ever changes.
+	headerVal = strings.TrimSpace(headerVal)
+	layouts := []string{
+		"2006-01-02 15:04:05 UTC",
+		"2006-01-02 15:04:05 -0700",
+		time.RFC3339,
+	}
+	var (
+		expiry time.Time
+		parsed bool
+	)
+	for _, l := range layouts {
+		t, err := time.Parse(l, headerVal)
+		if err == nil {
+			// time.Parse defaults to UTC for layouts without a tz indicator,
+			// which matches the literal "UTC" layout's intent. Numeric and
+			// RFC3339 offsets are preserved.
+			expiry = t
+			parsed = true
+			break
+		}
+	}
+	if !parsed {
+		return ""
+	}
+	expiryDate := expiry.Format("2006-01-02")
+	// Normalize to whole days using UTC dates so the result is stable
+	// regardless of the local timezone.
+	startOfDay := func(t time.Time) time.Time {
+		t = t.UTC()
+		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+	}
+	days := int(startOfDay(expiry).Sub(startOfDay(now)).Hours() / 24)
+	switch {
+	case days < 0:
+		return fmt.Sprintf("[!] Your fine-grained PAT expired on %s. Regenerate at %s", expiryDate, finePATSettingsURL)
+	case days == 0:
+		return fmt.Sprintf("[!] Your fine-grained PAT expires today (%s). Regenerate at %s", expiryDate, finePATSettingsURL)
+	case days <= expiryWarnThresholdDays:
+		return fmt.Sprintf("[!] Your fine-grained PAT expires in %d days (%s). Regenerate at %s", days, expiryDate, finePATSettingsURL)
+	}
+	return ""
+}
+
+// CheckToken validates the API token against GitHub. It enforces that the
+// token is a fine-grained PAT (rejecting classic / server tokens), confirms
+// the token belongs to the configured user, and warns when expiration is near.
 func CheckToken(creds *Credentials) error {
 	fmt.Println("Checking API token validity...")
+
+	if err := validateTokenPrefix(creds.Token); err != nil {
+		return err
+	}
+
 	req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
 	if err != nil {
 		return err
@@ -56,10 +164,10 @@ func CheckToken(creds *Credentials) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == 401 {
-		return fmt.Errorf("token seems invalid")
+	if resp.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("token seems invalid (unauthorized); regenerate a fine-grained PAT at %s", finePATSettingsURL)
 	}
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GitHub API returned unexpected status code (%d)", resp.StatusCode)
 	}
 
@@ -70,45 +178,15 @@ func CheckToken(creds *Credentials) error {
 	}
 
 	owner, _ := data["login"].(string)
+	// GitHub usernames are case-insensitive, so EqualFold is the correct
+	// identity check here.
 	if !strings.EqualFold(owner, creds.Username) {
 		return fmt.Errorf("token owner (%s) doesn't match logged user (%s)", owner, creds.Username)
 	}
 
-	rawScopes := resp.Header.Get("X-OAuth-Scopes")
-	if rawScopes == "" {
-		return fmt.Errorf("token seems invalid (no scopes)")
-	}
-
-	scopes := strings.Split(rawScopes, ",")
-	for i := range scopes {
-		scopes[i] = strings.TrimSpace(scopes[i])
-	}
-
-	required := map[string]bool{"repo": false, "delete_repo": false}
-	var excessive []string
-	for _, s := range scopes {
-		if _, ok := required[s]; ok {
-			required[s] = true
-		} else {
-			excessive = append(excessive, s)
-		}
-	}
-
-	for scope, found := range required {
-		if !found {
-			return fmt.Errorf("token missing required scope: %s (current: %s)", scope, util.HumanizeList(scopes))
-		}
-	}
-
-	var reqScopes []string
-	for s := range required {
-		reqScopes = append(reqScopes, s)
-	}
-	fmt.Printf("[+] Token valid! (scopes: %s)\n", util.HumanizeList(reqScopes))
-
-	if len(excessive) > 0 {
-		fmt.Printf("[!] Your token has excessive scopes (%s).\n", util.HumanizeList(excessive))
-		fmt.Println("These scopes are not needed by GitFive, so keep it secure or generate a new one.")
+	fmt.Println("[+] Token valid!")
+	if w := expirationWarning(resp.Header.Get("github-authentication-token-expiration"), time.Now()); w != "" {
+		fmt.Println(w)
 	}
 	fmt.Println()
 	return nil
@@ -215,7 +293,7 @@ func handleDeviceVerification(ctx context.Context, creds *Credentials, client, n
 
 	postResp, err := client.PostForm(ctx, "https://github.com/sessions/verified-device", url.Values{
 		"authenticity_token": {token},
-		"otp":               {string(otp)},
+		"otp":                {string(otp)},
 	})
 	if err != nil {
 		return err
@@ -250,7 +328,7 @@ func handleTOTP(ctx context.Context, creds *Credentials, client *httpclient.Clie
 
 	postResp, err := client.PostForm(ctx, "https://github.com/sessions/two-factor", url.Values{
 		"authenticity_token": {token},
-		"app_otp":           {string(otp)},
+		"app_otp":            {string(otp)},
 	})
 	if err != nil {
 		return err
@@ -341,7 +419,7 @@ func handleGeneric2FA(ctx context.Context, creds *Credentials, client *httpclien
 
 	postResp, err := client.PostForm(ctx, "https://github.com/sessions/two-factor", url.Values{
 		"authenticity_token": {token},
-		"otp":               {string(otp)},
+		"otp":                {string(otp)},
 	})
 	if err != nil {
 		return err
