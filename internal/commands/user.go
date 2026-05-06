@@ -167,7 +167,7 @@ func NewUserCmd() *cobra.Command {
 				if err != nil {
 					fmt.Printf("[!] Metamon failed: %v\n", err)
 				} else if emailsIndex != nil {
-					accounts, err := scraper.ScrapeCommits(ctx, r.Client, r.Creds.Username, tempRepoName, emailsIndex, r.Target.Username, true, r.Limiters["commits_scrape"])
+					accounts, err := scraper.ScrapeCommits(ctx, r.Creds.Token, r.Creds.Username, tempRepoName, emailsIndex, r.Target.Username, true, r.Limiters["commits_scrape"])
 					if err == nil {
 						for email, acc := range accounts {
 							r.EmailsAccounts[email] = map[string]interface{}{
@@ -211,7 +211,7 @@ func NewUserCmd() *cobra.Command {
 					break
 				}
 
-				accounts, err := scraper.ScrapeCommits(ctx, r.Client, r.Creds.Username, tempRepoName, emailsIndex, r.Target.Username, false, r.Limiters["commits_scrape"])
+				accounts, err := scraper.ScrapeCommits(ctx, r.Creds.Token, r.Creds.Username, tempRepoName, emailsIndex, r.Target.Username, false, r.Limiters["commits_scrape"])
 				if err != nil {
 					fmt.Printf("[!] Commits scrape failed: %v\n", err)
 					break

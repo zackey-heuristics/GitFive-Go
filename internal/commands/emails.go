@@ -61,7 +61,7 @@ func NewEmailsCmd() *cobra.Command {
 
 			targetUsername := target
 			if emailsIndex != nil {
-				accounts, err := scraper.ScrapeCommits(ctx, r.Client, r.Creds.Username, tempRepoName, emailsIndex, targetUsername, false, r.Limiters["commits_scrape"])
+				accounts, err := scraper.ScrapeCommits(ctx, r.Creds.Token, r.Creds.Username, tempRepoName, emailsIndex, targetUsername, false, r.Limiters["commits_scrape"])
 				if err == nil {
 					for email, acc := range accounts {
 						marker := ""

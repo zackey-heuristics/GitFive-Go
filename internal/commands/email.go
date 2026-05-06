@@ -36,7 +36,7 @@ func NewEmailCmd() *cobra.Command {
 			}
 
 			if len(emailsIndex) > 0 {
-				accounts, err := scraper.ScrapeCommits(ctx, r.Client, r.Creds.Username, tempRepoName, emailsIndex, "", false, r.Limiters["commits_scrape"])
+				accounts, err := scraper.ScrapeCommits(ctx, r.Creds.Token, r.Creds.Username, tempRepoName, emailsIndex, "", false, r.Limiters["commits_scrape"])
 				if err != nil {
 					fmt.Printf("[!] Commits scrape failed: %v\n", err)
 				} else if acc, ok := accounts[email]; ok {

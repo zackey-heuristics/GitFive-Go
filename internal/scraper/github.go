@@ -115,34 +115,44 @@ func DeleteRepo(ctx context.Context, token, owner, repoName string) error {
 	return fmt.Errorf("couldn't delete repo %q (status %d): %s", repoName, resp.StatusCode, string(body))
 }
 
-// FetchProfileName uses GitHub hovercards to fetch the display name for a username.
-func FetchProfileName(ctx context.Context, client *httpclient.Client, username string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("https://github.com/users/%s/hovercard", username), nil)
+// FetchProfileName returns the display name for a username via
+// `GET /users/{login}`. Empty string (no error) means the user has no name set.
+func FetchProfileName(ctx context.Context, token, username string) (string, error) {
+	if err := validateRepoIdent(username); err != nil {
+		return "", fmt.Errorf("fetch profile %q: %w", username, err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET",
+		fmt.Sprintf("%s/users/%s", githubAPIBase, username), nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	setGitHubAPIHeaders(req, token)
 
-	resp, err := client.Do(req)
+	resp, err := apiHTTPClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("profile fetch failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if resp.StatusCode == http.StatusNotFound {
+		return "", nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		return "", fmt.Errorf("profile API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
 	if err != nil {
 		return "", err
 	}
-
-	var fields []string
-	doc.Find(`section[aria-label="User login and name"] a`).Each(func(_ int, s *goquery.Selection) {
-		fields = append(fields, strings.TrimSpace(s.Text()))
-	})
-
-	if len(fields) < 2 {
-		return "", nil
+	var data struct {
+		Name string `json:"name"`
 	}
-	return fields[1], nil
+	if err := json.Unmarshal(body, &data); err != nil {
+		return "", fmt.Errorf("parse profile response: %w", err)
+	}
+	return strings.TrimSpace(data.Name), nil
 }
 
 // GetOriginalBranchFromCommit finds the branch a commit belongs to.

@@ -131,6 +131,65 @@ func TestCreateRepo(t *testing.T) {
 	})
 }
 
+func TestFetchProfileName(t *testing.T) {
+	t.Run("returns name on 200", func(t *testing.T) {
+		_, cleanup := withFakeAPI(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/users/alice" {
+				t.Errorf("path = %q, want /users/alice", r.URL.Path)
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"login":"alice","name":"Alice Smith"}`))
+		}))
+		defer cleanup()
+
+		name, err := FetchProfileName(context.Background(), "github_pat_xxxx", "alice")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if name != "Alice Smith" {
+			t.Errorf("name = %q, want Alice Smith", name)
+		}
+	})
+
+	t.Run("returns empty on 404 without error", func(t *testing.T) {
+		_, cleanup := withFakeAPI(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer cleanup()
+
+		name, err := FetchProfileName(context.Background(), "github_pat_xxxx", "ghost")
+		if err != nil {
+			t.Fatalf("404 should not return an error, got %v", err)
+		}
+		if name != "" {
+			t.Errorf("name = %q, want empty", name)
+		}
+	})
+
+	t.Run("returns empty when name field is null", func(t *testing.T) {
+		_, cleanup := withFakeAPI(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"login":"alice","name":null}`))
+		}))
+		defer cleanup()
+
+		name, err := FetchProfileName(context.Background(), "github_pat_xxxx", "alice")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if name != "" {
+			t.Errorf("name = %q, want empty for null", name)
+		}
+	})
+
+	t.Run("rejects forbidden chars in username", func(t *testing.T) {
+		_, err := FetchProfileName(context.Background(), "github_pat_xxxx", "alice/../admin")
+		if err == nil {
+			t.Fatal("expected error for slash in username")
+		}
+	})
+}
+
 func TestDeleteRepo(t *testing.T) {
 	t.Run("success on 204", func(t *testing.T) {
 		var gotMethod, gotPath string

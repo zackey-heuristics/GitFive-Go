@@ -4,14 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
+	"io"
+	"net/http"
 	"strings"
-	"sync"
-
-	"github.com/schollz/progressbar/v3"
-	"golang.org/x/sync/errgroup"
-
-	"github.com/zackey-heuristics/gitfive-go/internal/httpclient"
 )
 
 // CommitAccount holds the result of commit-based email discovery.
@@ -22,195 +17,160 @@ type CommitAccount struct {
 	IsTarget bool   `json:"is_target"`
 }
 
-var (
-	embeddedDataRegex = regexp.MustCompile(`data-target="react-app\.embeddedData">(\{.*?\})</script>`)
-	currentOidRegex   = regexp.MustCompile(`"currentOid":"(.*?)"`)
-)
+// commitsAPIPerPage is GitHub's max page size for the commits endpoint. Using
+// the cap keeps round-trip count to ceil(N/100) for N spoofed commits.
+const commitsAPIPerPage = 100
 
-// commitPayload represents the embedded JSON structure on GitHub commits pages.
-type commitPayload struct {
-	Payload struct {
-		CommitGroups []struct {
-			Commits []commitEntry `json:"commits"`
-		} `json:"commitGroups"`
-	} `json:"payload"`
+// commitsAPIPageCap bounds the worst-case loop. Each page brings 100 commits;
+// 50 pages = 5000 commits. The metamon flow generates far fewer than that.
+const commitsAPIPageCap = 50
+
+// apiCommit mirrors the subset of `GET /repos/{owner}/{repo}/commits` we use.
+// `Author` is the top-level resolved GitHub user (null when GitHub could not
+// link the email to an account); `Commit.Author.Email` is the raw email we
+// pushed — it identifies which spoofed commit this is via the sha map.
+type apiCommit struct {
+	SHA    string `json:"sha"`
+	Commit struct {
+		Author struct {
+			Name  string `json:"name"`
+			Email string `json:"email"`
+		} `json:"author"`
+	} `json:"commit"`
+	Author *apiCommitUser `json:"author"`
 }
 
-type commitEntry struct {
-	OID     string         `json:"oid"`
-	Authors []commitAuthor `json:"authors"`
+type apiCommitUser struct {
+	Login     string `json:"login"`
+	AvatarURL string `json:"avatar_url"`
 }
 
-type commitAuthor struct {
-	DisplayName string `json:"displayName"`
-	Login       string `json:"login"`
-	AvatarURL   string `json:"avatarUrl"`
-}
-
-// ScrapeCommits analyzes commits in a repo to map emails to GitHub accounts.
-// It fetches the mirage branch commits page(s) and parses the embedded React data.
-func ScrapeCommits(ctx context.Context, client *httpclient.Client, owner, repoName string,
+// ScrapeCommits walks `GET /repos/{owner}/{repo}/commits?sha=mirage` and maps
+// each spoofed commit's email to the GitHub account GitHub linked it to via
+// the top-level `author.login` field. Token is the fine-grained PAT.
+func ScrapeCommits(ctx context.Context, token, owner, repoName string,
 	emailsIndex map[string]string, targetUsername string, checkOnly bool, sem Semaphore) (map[string]*CommitAccount, error) {
 
 	out := make(map[string]*CommitAccount)
-	var mu sync.Mutex
 
-	totalEmails := len(emailsIndex)
-	if totalEmails == 0 {
+	if len(emailsIndex) == 0 {
 		return out, nil
 	}
 
-	// Fetch the first commits page to get lastHash and the initial batch of commits.
-	firstURL := fmt.Sprintf("https://github.com/%s/%s/commits/mirage", owner, repoName)
-	resp, err := client.Get(ctx, firstURL)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	bodyHTML := ReadAll(resp)
-
-	if strings.Contains(strings.ToLower(bodyHTML), "this repository is empty") {
-		return nil, fmt.Errorf("empty repository")
-	}
-
-	// Get lastHash for pagination
-	oidMatches := currentOidRegex.FindStringSubmatch(bodyHTML)
-	if len(oidMatches) < 2 {
-		return nil, fmt.Errorf("couldn't fetch last hash from commits page")
-	}
-	lastHash := oidMatches[1]
-
-	// Parse the first page directly — this avoids needing commitCount.
-	firstPageCommits := parseEmbeddedCommits(bodyHTML)
-
-	// Process the first page inline
-	processCommits(ctx, client, firstPageCommits, emailsIndex, targetUsername, checkOnly, &mu, out)
-
-	// If there are more emails than commits on the first page, paginate.
-	// GitHub shows ~35 commits per page.
-	if totalEmails > len(firstPageCommits) && len(firstPageCommits) >= 35 {
-		// Estimate how many more pages we need
-		remaining := totalEmails - len(firstPageCommits)
-		var pages []int
-		for offset := 35; offset <= remaining+35; offset += 35 {
-			pages = append(pages, offset)
+	// Walk pages serially. Pagination is small (1-10 pages typically) and
+	// serial keeps the implementation simple; the per-page work is small.
+	// `out` therefore needs no mutex — only this goroutine writes to it.
+	for page := 1; page <= commitsAPIPageCap; page++ {
+		if err := ctx.Err(); err != nil {
+			return out, err
 		}
+		url := fmt.Sprintf("%s/repos/%s/%s/commits?sha=mirage&per_page=%d&page=%d",
+			githubAPIBase, owner, repoName, commitsAPIPerPage, page)
 
-		bar := progressbar.NewOptions(len(pages),
-			progressbar.OptionSetDescription("Fetching more commits..."),
-			progressbar.OptionClearOnFinish(),
-		)
-
-		g, ctx := errgroup.WithContext(ctx)
-		for _, page := range pages {
-			page := page
-			g.Go(func() error {
-				if err := sem.Acquire(ctx, 1); err != nil {
-					return err
-				}
-				defer sem.Release(1)
-
-				url := fmt.Sprintf("https://github.com/%s/%s/commits/mirage?after=%s+%d&branch=mirage",
-					owner, repoName, lastHash, page)
-
-				resp, err := client.Get(ctx, url)
-				if err != nil {
-					return err
-				}
-				defer func() { _ = resp.Body.Close() }()
-
-				if resp.StatusCode == 429 {
-					return fmt.Errorf("rate-limit detected on commits scrape")
-				}
-
-				pageBody := ReadAll(resp)
-				commits := parseEmbeddedCommits(pageBody)
-				processCommits(ctx, client, commits, emailsIndex, targetUsername, checkOnly, &mu, out)
-
-				_ = bar.Add(1)
-				return nil
-			})
-		}
-
-		if err := g.Wait(); err != nil {
+		commits, err := fetchCommitsPage(ctx, token, url)
+		if err != nil {
 			return nil, err
 		}
-		_ = bar.Finish()
+		if len(commits) == 0 {
+			break
+		}
+
+		if err := processAPICommits(ctx, token, commits, emailsIndex, targetUsername, checkOnly, sem, out); err != nil {
+			return out, err
+		}
+
+		if len(commits) < commitsAPIPerPage {
+			break
+		}
 	}
 
 	return out, nil
 }
 
-// parseEmbeddedCommits extracts commit entries from the embedded React JSON.
-func parseEmbeddedCommits(html string) []commitEntry {
-	matches := embeddedDataRegex.FindStringSubmatch(html)
-	if len(matches) < 2 {
-		return nil
+func fetchCommitsPage(ctx context.Context, token, url string) ([]apiCommit, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	setGitHubAPIHeaders(req, token)
+
+	resp, err := apiHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("commits page fetch failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusConflict {
+		// 409 = "Git Repository is empty." after a fresh CreateRepo before push.
+		return nil, fmt.Errorf("empty repository")
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		return nil, fmt.Errorf("commits API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var payload commitPayload
-	if err := json.Unmarshal([]byte(matches[1]), &payload); err != nil {
-		return nil
+	// Cap the JSON read; one page at per_page=100 is comfortably under 1 MiB.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	if err != nil {
+		return nil, fmt.Errorf("read commits page: %w", err)
 	}
-
-	if len(payload.Payload.CommitGroups) == 0 {
-		return nil
+	var commits []apiCommit
+	if err := json.Unmarshal(body, &commits); err != nil {
+		return nil, fmt.Errorf("parse commits page: %w", err)
 	}
-
-	// Collect commits from all groups (there may be multiple date groups)
-	var all []commitEntry
-	for _, group := range payload.Payload.CommitGroups {
-		all = append(all, group.Commits...)
-	}
-	return all
+	return commits, nil
 }
 
-// processCommits matches commits to emails and resolves GitHub accounts.
-func processCommits(ctx context.Context, client *httpclient.Client,
-	commits []commitEntry, emailsIndex map[string]string,
-	targetUsername string, checkOnly bool,
-	mu *sync.Mutex, out map[string]*CommitAccount) {
+func processAPICommits(ctx context.Context, token string,
+	commits []apiCommit, emailsIndex map[string]string,
+	targetUsername string, checkOnly bool, sem Semaphore,
+	out map[string]*CommitAccount) error {
 
-	for _, commit := range commits {
-		if len(commit.Authors) == 0 {
-			continue
+	for _, c := range commits {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-
-		// Find the author that is NOT gitfive_hunter and has a GitHub login.
-		var target *commitAuthor
-		for i := range commit.Authors {
-			a := &commit.Authors[i]
-			if a.DisplayName != "gitfive_hunter" && a.Login != "" {
-				target = a
-				break
-			}
-		}
-		if target == nil {
-			continue
-		}
-
-		email, ok := emailsIndex[commit.OID]
+		// We only care about commits we pushed. The init commit (no sha in
+		// the index) and any noise are skipped here implicitly.
+		email, ok := emailsIndex[c.SHA]
 		if !ok {
+			continue
+		}
+		// Sanity: the spoofed-commit author email should match what we
+		// recorded for that sha. If not, skip (defense in depth).
+		if !strings.EqualFold(c.Commit.Author.Email, email) {
+			continue
+		}
+		// `author` (top-level) is null when GitHub couldn't resolve the
+		// email to an account — that's the "no match" outcome we silently
+		// skip, mirroring the old HTML behaviour.
+		if c.Author == nil || c.Author.Login == "" {
 			continue
 		}
 
 		account := &CommitAccount{
-			Avatar:   target.AvatarURL,
-			Username: target.Login,
-			IsTarget: strings.EqualFold(target.Login, targetUsername),
+			Avatar:   c.Author.AvatarURL,
+			Username: c.Author.Login,
+			IsTarget: strings.EqualFold(c.Author.Login, targetUsername),
 		}
 
 		if account.IsTarget {
-			fmt.Printf("[+] [Target's email] %s -> @%s\n", email, target.Login)
+			fmt.Printf("[+] [Target's email] %s -> @%s\n", email, c.Author.Login)
 		}
 
 		if !checkOnly {
-			name, _ := FetchProfileName(ctx, client, target.Login)
+			// Bound concurrency on the profile-name lookup the same way
+			// the HTML version did. Acquire failure here means ctx was
+			// cancelled — propagate it instead of silently skipping.
+			if err := sem.Acquire(ctx, 1); err != nil {
+				return err
+			}
+			name, _ := FetchProfileName(ctx, token, c.Author.Login)
+			sem.Release(1)
 			account.FullName = name
 		}
 
-		mu.Lock()
 		out[email] = account
-		mu.Unlock()
 	}
+	return nil
 }
