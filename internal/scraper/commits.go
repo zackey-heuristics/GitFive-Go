@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -21,9 +22,15 @@ type CommitAccount struct {
 // the cap keeps round-trip count to ceil(N/100) for N spoofed commits.
 const commitsAPIPerPage = 100
 
-// commitsAPIPageCap bounds the worst-case loop. Each page brings 100 commits;
-// 50 pages = 5000 commits. The metamon flow generates far fewer than that.
-const commitsAPIPageCap = 50
+// commitsAPIPageHeadroom is added to the expected page count to give us a
+// few extra pages over the strict ceil(N/100) so an off-by-one (e.g. the
+// init commit, or a coincidental short page) doesn't terminate early.
+const commitsAPIPageHeadroom = 5
+
+// commitsAPIPageHardLimit is the absolute upper bound to prevent runaway
+// loops if GitHub ever returns a stable full page indefinitely. It is a
+// safety net, not the normal termination condition.
+const commitsAPIPageHardLimit = 1000
 
 // apiCommit mirrors the subset of `GET /repos/{owner}/{repo}/commits` we use.
 // `Author` is the top-level resolved GitHub user (null when GitHub could not
@@ -57,10 +64,20 @@ func ScrapeCommits(ctx context.Context, token, owner, repoName string,
 		return out, nil
 	}
 
+	// Size the page budget to the actual workload so callers that push
+	// thousands of spoofed commits aren't silently truncated. Add a small
+	// headroom (init commit, off-by-ones) plus a hard ceiling so a
+	// misbehaving server cannot cause an unbounded loop.
+	expectedPages := (len(emailsIndex)+commitsAPIPerPage-1)/commitsAPIPerPage + commitsAPIPageHeadroom
+	pageCap := expectedPages
+	if pageCap > commitsAPIPageHardLimit {
+		pageCap = commitsAPIPageHardLimit
+	}
+
 	// Walk pages serially. Pagination is small (1-10 pages typically) and
 	// serial keeps the implementation simple; the per-page work is small.
 	// `out` therefore needs no mutex — only this goroutine writes to it.
-	for page := 1; page <= commitsAPIPageCap; page++ {
+	for page := 1; page <= pageCap; page++ {
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
@@ -81,6 +98,15 @@ func ScrapeCommits(ctx context.Context, token, owner, repoName string,
 
 		if len(commits) < commitsAPIPerPage {
 			break
+		}
+
+		// If we exhaust the budget while a full page was returned, the
+		// upstream had more data we deliberately are not fetching — surface
+		// it instead of silently truncating.
+		if page == pageCap {
+			fmt.Fprintf(os.Stderr,
+				"[!] commit-scrape page cap reached (%d pages); some email-account mappings may be missing\n",
+				pageCap)
 		}
 	}
 

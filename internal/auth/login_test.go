@@ -83,6 +83,7 @@ func TestExpirationWarning(t *testing.T) {
 	}{
 		{name: "missing header", header: "", wantEmpty: true},
 		{name: "expired yesterday", header: "2026-05-05 12:00:00 UTC", wantSubstr: "expired on 2026-05-05"},
+		{name: "expired earlier today reports expired (not expires today)", header: "2026-05-06 09:00:00 UTC", wantSubstr: "expired on 2026-05-06"},
 		{name: "expires today", header: "2026-05-06 23:00:00 UTC", wantSubstr: "expires today (2026-05-06)"},
 		{name: "expires in 5 days", header: "2026-05-11 12:00:00 UTC", wantSubstr: "expires in 5 days (2026-05-11)"},
 		{name: "expires in 30 days (boundary, warn)", header: "2026-06-05 12:00:00 UTC", wantSubstr: "expires in 30 days"},

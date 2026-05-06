@@ -118,16 +118,21 @@ func expirationWarning(headerVal string, now time.Time) string {
 		return ""
 	}
 	expiryDate := expiry.Format("2006-01-02")
-	// Normalize to whole days using UTC dates so the result is stable
-	// regardless of the local timezone.
+	// Decide expired vs upcoming on the actual instant first: a token whose
+	// expiry timestamp is already in the past must be reported as "expired"
+	// even when it falls on the same calendar day as `now`, so users are not
+	// misled into thinking an already-401 token is still valid.
+	if expiry.Before(now) {
+		return fmt.Sprintf("[!] Your fine-grained PAT expired on %s. Regenerate at %s", expiryDate, finePATSettingsURL)
+	}
+	// For warnings about an upcoming expiry, count whole UTC calendar days
+	// so the message is stable regardless of the local timezone.
 	startOfDay := func(t time.Time) time.Time {
 		t = t.UTC()
 		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 	}
 	days := int(startOfDay(expiry).Sub(startOfDay(now)).Hours() / 24)
 	switch {
-	case days < 0:
-		return fmt.Sprintf("[!] Your fine-grained PAT expired on %s. Regenerate at %s", expiryDate, finePATSettingsURL)
 	case days == 0:
 		return fmt.Sprintf("[!] Your fine-grained PAT expires today (%s). Regenerate at %s", expiryDate, finePATSettingsURL)
 	case days <= expiryWarnThresholdDays:
@@ -142,6 +147,13 @@ func expirationWarning(headerVal string, now time.Time) string {
 // expiration is near.
 func CheckToken(creds *Credentials) error {
 	fmt.Println("Checking API token validity...")
+
+	// Trim once on the canonical field so the same value is used by both
+	// validateTokenPrefix and the Authorization header below. Loaded creds
+	// (read from disk) may carry whitespace if the file was hand-edited;
+	// PromptCreds-supplied tokens are already trimmed but trimming again is
+	// idempotent.
+	creds.Token = strings.TrimSpace(creds.Token)
 
 	if err := validateTokenPrefix(creds.Token); err != nil {
 		return err
