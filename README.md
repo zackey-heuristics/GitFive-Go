@@ -1,5 +1,12 @@
 # GitFive-Go
 
+> **Unofficial implementation.** This is a third-party Go port of
+> [mxrch/GitFive](https://github.com/mxrch/GitFive), maintained
+> independently. It is not affiliated with, endorsed by, or supported by
+> the original author. Bug reports for this Go port go to
+> [this repository's issue tracker](https://github.com/zackey-heuristics/GitFive-Go/issues),
+> not upstream.
+
 A Go port of [GitFive](https://github.com/mxrch/GitFive) — an OSINT tool to investigate GitHub profiles.
 
 Single binary, cross-platform, zero runtime dependencies.
