@@ -92,8 +92,17 @@ and produced stale data after token rotation.
   *other* backend is best-effort cleared in the same call, so a user who
   switches between keyring and file modes never leaves a recoverable token
   behind on the unused backend.
-- `gitfive-go login --clean` removes both the keyring entry and the on-disk
-  file regardless of which was last used.
+- The same best-effort cleanup runs **even on the auto-fallback path**:
+  when a `BackendKeyring` request degrades to file storage because
+  `keyring.Set` failed, the `Save` flow still attempts `keyring.Delete` so
+  a stale PAT from a previous successful keyring login does not survive
+  the fallback.
+- `gitfive-go login --clean` removes both the keyring entry and the
+  on-disk file regardless of which was last used. Clean now propagates a
+  non-`NotFound` `keyring.Delete` error back to the caller (rather than
+  silently treating "delete failed" as success), so a locked / unavailable
+  keyring at clean time is reported instead of producing a misleading
+  "credentials cleared" message while the PAT remains recoverable.
 - The existing 30-day expiry warning (PR #14) still prompts the user to
   rotate before the PAT expires. The new `Save` flow guarantees the rotation
   replaces the old token rather than leaving it adjacent.

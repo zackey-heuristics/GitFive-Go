@@ -295,6 +295,38 @@ func TestClean_NoOpWhenNothingStored(t *testing.T) {
 	}
 }
 
+func TestClean_SurfacesKeyringDeleteFailure(t *testing.T) {
+	// Regression guard for PR #16 review: when keyring.Delete returns an
+	// error that is NOT ErrNotFound (keyring locked / D-Bus dropped /
+	// platform-specific failure), Clean must propagate it instead of
+	// silently reporting success — otherwise `gitfive-go login --clean`
+	// would tell the user the credentials are gone while the PAT is
+	// still recoverable from the keyring.
+	keyring.MockInitWithError(errors.New("simulated keyring locked"))
+	t.Cleanup(func() { keyring.MockInit() })
+
+	s := newTempStore(t)
+	// Pre-create the marker file so we can confirm the file half of
+	// Clean still completes even when the keyring half fails.
+	if err := os.MkdirAll(filepath.Dir(s.credsPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.credsPath, []byte("placeholder"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.Clean()
+	if err == nil {
+		t.Fatal("expected error when keyring delete fails")
+	}
+	if !strings.Contains(err.Error(), "keyring") {
+		t.Errorf("error should mention keyring, got: %v", err)
+	}
+	if _, statErr := os.Stat(s.credsPath); !os.IsNotExist(statErr) {
+		t.Errorf("file half of Clean should still complete; statErr=%v", statErr)
+	}
+}
+
 func TestLoad_UnknownStorageReturnsError(t *testing.T) {
 	resetMockKeyring(t)
 	s := newTempStore(t)

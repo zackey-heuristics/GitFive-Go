@@ -140,6 +140,12 @@ func (s *Store) Save(token string, requested Backend) (used Backend, err error) 
 			fmt.Fprintf(os.Stderr,
 				"[!] OS keyring unavailable (%v); falling back to file storage at %s\n",
 				err, s.credsPath)
+			// Best-effort: clear any stale keyring entry from a previous
+			// successful login. Without this, a transient Set failure
+			// (e.g. quota / locked but readable keyring) would leave the
+			// old PAT recoverable in the keyring while the new token went
+			// to file. Mirrors the cleanup in the BackendFile branch.
+			_ = keyring.Delete(keyringService, keyringAccount)
 			return s.saveFile(token)
 		}
 		// keyring.Set succeeded. Persist the marker file. On failure we
@@ -169,14 +175,20 @@ func (s *Store) Save(token string, requested Backend) (used Backend, err error) 
 }
 
 // Clean removes the token from BOTH backends and removes the on-disk file
-// entirely. Errors from missing entries are tolerated; the post-condition
-// is "no GitFive-Go credentials remain on this host".
+// entirely. "Not found" errors on either backend are tolerated (idempotent
+// reset), but any *other* failure is surfaced so callers cannot mistakenly
+// report a successful cleanup when a token is still recoverable on disk
+// or in the keyring.
 func (s *Store) Clean() error {
-	_ = keyring.Delete(keyringService, keyringAccount) // best effort
-	if err := os.Remove(s.credsPath); err != nil && !os.IsNotExist(err) {
-		return err
+	var errs []error
+	if err := keyring.Delete(keyringService, keyringAccount); err != nil &&
+		!errors.Is(err, keyring.ErrNotFound) {
+		errs = append(errs, fmt.Errorf("delete keyring entry: %w", err))
 	}
-	return nil
+	if err := os.Remove(s.credsPath); err != nil && !os.IsNotExist(err) {
+		errs = append(errs, fmt.Errorf("remove creds file: %w", err))
+	}
+	return errors.Join(errs...)
 }
 
 func (s *Store) saveFile(token string) (Backend, error) {
