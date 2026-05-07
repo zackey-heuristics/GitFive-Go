@@ -1,55 +1,95 @@
 package auth
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/zackey-heuristics/gitfive-go/internal/credstore"
 	"github.com/zackey-heuristics/gitfive-go/internal/util"
 )
 
 // Credentials holds the fine-grained PAT and the resolved GitHub username.
+//
+// Username is in-memory only — it is rederived from `GET /user` by
+// CheckToken on every Login flow, so persisting it is unnecessary. The
+// token is the only secret persisted, and it is delegated to credstore
+// (OS keyring or fallback file).
 type Credentials struct {
-	Username string `json:"username"`
-	Token    string `json:"token"`
+	Username string
+	Token    string
 
-	credsPath string
+	store *credstore.Store
+
+	// PreferredBackend selects the credstore backend used by Save. When
+	// unset, Save uses BackendKeyring (auto-falling back to file inside
+	// credstore on keyring failure).
+	PreferredBackend credstore.Backend
+
+	// ActiveBackend records which backend Save actually used after the
+	// last successful Save. Useful for user-facing messages such as
+	// "Token stored in OS keyring" vs "Token stored in file at ...".
+	ActiveBackend credstore.Backend
 }
 
-// NewCredentials initializes credential paths.
+// NewCredentials returns Credentials wired to the standard on-disk path.
 func NewCredentials() (*Credentials, error) {
 	dir, err := util.GitfiveDir()
 	if err != nil {
 		return nil, fmt.Errorf("credentials: %w", err)
 	}
 	return &Credentials{
-		credsPath: filepath.Join(dir, "creds.m"),
+		store: credstore.New(filepath.Join(dir, "creds.m")),
 	}, nil
 }
 
-// CredsPath returns the path to the credentials file.
-func (c *Credentials) CredsPath() string { return c.credsPath }
-
-// Load reads credentials from disk.
-func (c *Credentials) Load() {
-	if creds := parseFile(c.credsPath); creds != nil {
-		if v, ok := creds["username"].(string); ok {
-			c.Username = v
-		}
-		if v, ok := creds["token"].(string); ok {
-			c.Token = v
-		}
+// CredsPath returns the path to the credentials marker / fallback file.
+// Useful for diagnostics and the askpass error messages.
+func (c *Credentials) CredsPath() string {
+	if c.store == nil {
+		return ""
 	}
+	return c.store.CredsPath()
 }
 
-// Save writes credentials to disk.
+// Load reads credentials from disk (and the OS keyring if the marker says so).
+// Errors are silently ignored to preserve prior "best-effort" behaviour for
+// callers that only check AreLoaded(); explicit error reporting belongs at
+// login time.
+func (c *Credentials) Load() {
+	if c.store == nil {
+		return
+	}
+	tok, _, err := c.store.Load()
+	if err != nil {
+		// Surface a one-line warning so a corrupt creds.m is not silently
+		// invisible. Token stays empty; AreLoaded() will return false and
+		// callers will route the user to `gitfive-go login`.
+		fmt.Fprintf(os.Stderr, "[!] failed to load credentials: %v\n", err)
+		return
+	}
+	c.Token = tok
+}
+
+// Save writes the token via credstore using the configured PreferredBackend
+// (defaulting to BackendKeyring). Records the backend actually used in
+// ActiveBackend (which may differ from PreferredBackend if credstore fell
+// back from keyring to file). Username is in-memory only and is NOT
+// persisted.
 func (c *Credentials) Save() error {
-	return saveFile(c.credsPath, map[string]string{
-		"username": c.Username,
-		"token":    c.Token,
-	})
+	if c.store == nil {
+		return fmt.Errorf("credentials store not initialized")
+	}
+	backend := c.PreferredBackend
+	if backend == "" {
+		backend = credstore.BackendKeyring
+	}
+	used, err := c.store.Save(c.Token, backend)
+	if err != nil {
+		return err
+	}
+	c.ActiveBackend = used
+	return nil
 }
 
 // AreLoaded returns true if a token is present. Username is populated by
@@ -58,35 +98,11 @@ func (c *Credentials) AreLoaded() bool {
 	return c.Token != ""
 }
 
-// Clean removes the credentials file from disk.
+// Clean removes the token from BOTH backends (keyring + file). After a
+// successful Clean, no GitFive-Go credentials remain on the host.
 func (c *Credentials) Clean() error {
-	if err := os.Remove(c.credsPath); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
-}
-
-func parseFile(path string) map[string]interface{} {
-	data, err := os.ReadFile(path)
-	if err != nil {
+	if c.store == nil {
 		return nil
 	}
-	decoded, err := base64.StdEncoding.DecodeString(string(data))
-	if err != nil {
-		return nil
-	}
-	var result map[string]interface{}
-	if err := json.Unmarshal(decoded, &result); err != nil {
-		return nil
-	}
-	return result
-}
-
-func saveFile(path string, data interface{}) error {
-	jsonBytes, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return err
-	}
-	encoded := base64.StdEncoding.EncodeToString(jsonBytes)
-	return os.WriteFile(path, []byte(encoded), 0o600)
+	return c.store.Clean()
 }
