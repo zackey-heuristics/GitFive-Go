@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"golang.org/x/term"
+
+	"github.com/zackey-heuristics/gitfive-go/internal/credstore"
 )
 
 const (
@@ -223,7 +225,14 @@ func Login(creds *Credentials, force bool) error {
 	if err := creds.Save(); err != nil {
 		return fmt.Errorf("save credentials: %w", err)
 	}
-	fmt.Printf("[+] Credentials saved in %s\n", creds.CredsPath())
+	switch creds.ActiveBackend {
+	case credstore.BackendKeyring:
+		fmt.Printf("[+] Token stored in the OS keyring (marker file: %s)\n", creds.CredsPath())
+	case credstore.BackendFile:
+		fmt.Printf("[+] Token stored in %s (file storage)\n", creds.CredsPath())
+	default:
+		fmt.Printf("[+] Credentials saved in %s\n", creds.CredsPath())
+	}
 	return nil
 }
 

@@ -6,12 +6,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/zackey-heuristics/gitfive-go/internal/auth"
+	"github.com/zackey-heuristics/gitfive-go/internal/credstore"
 )
 
 // NewLoginCmd creates the "login" subcommand.
 func NewLoginCmd() *cobra.Command {
 	var clean bool
 	var force bool
+	var useFileStorage bool
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -22,9 +24,18 @@ func NewLoginCmd() *cobra.Command {
 				return err
 			}
 
+			// Apply backend selection BEFORE Save runs. The default is
+			// keyring; --use-file-storage forces the on-disk fallback even
+			// on hosts where keyring is available.
+			if useFileStorage {
+				creds.PreferredBackend = credstore.BackendFile
+			} else {
+				creds.PreferredBackend = credstore.BackendKeyring
+			}
+
 			if clean {
 				_ = creds.Clean()
-				fmt.Println("[+] Credentials file deleted!")
+				fmt.Println("[+] Credentials cleared (keyring entry and file).")
 				return nil
 			}
 
@@ -49,7 +60,9 @@ func NewLoginCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&clean, "clean", false, "Clear the credentials file")
+	cmd.Flags().BoolVar(&clean, "clean", false, "Clear the credentials (both keyring entry and file)")
 	cmd.Flags().BoolVar(&force, "force", false, "Re-authenticate even if a valid token is already saved")
+	cmd.Flags().BoolVar(&useFileStorage, "use-file-storage", false,
+		"Force base64 file storage instead of the OS keyring (useful for headless / CI hosts)")
 	return cmd
 }
