@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/zackey-heuristics/gitfive-go/internal/gitcred"
 	"github.com/zackey-heuristics/gitfive-go/internal/scraper"
 	"github.com/zackey-heuristics/gitfive-go/internal/ui"
 	"github.com/zackey-heuristics/gitfive-go/internal/util"
@@ -39,8 +40,11 @@ func StartMetamon(ctx context.Context, owner, token string, emails []string) (st
 		return tempRepoName, nil, err
 	}
 
-	// Init git repo
-	repoURL := fmt.Sprintf("https://%s:x-oauth-basic@github.com/%s/%s", token, owner, tempRepoName)
+	// Init git repo. The remote URL is token-less; authentication for the
+	// later push flows through GIT_ASKPASS (see internal/gitcred). Storing
+	// a token-less URL also keeps the temp repo's `.git/config` clean if
+	// the run is interrupted before cleanup.
+	repoURL := fmt.Sprintf("https://github.com/%s/%s", owner, tempRepoName)
 
 	if err := gitExec(ctx, tmpDir, "init"); err != nil {
 		return tempRepoName, nil, err
@@ -102,11 +106,18 @@ func StartMetamon(ctx context.Context, owner, token string, emails []string) (st
 	}
 	_ = bar.Finish()
 
-	// Rename branch to mirage and push
+	// Rename branch to mirage and push. The push is the one operation that
+	// requires GitHub authentication; route it through GIT_ASKPASS so the
+	// token never lands in argv.
 	if err := gitExec(ctx, tmpDir, "branch", "-M", "mirage"); err != nil {
 		return tempRepoName, nil, err
 	}
-	if err := gitExec(ctx, tmpDir, "push", "-u", "origin", "mirage"); err != nil {
+	pushCmd, err := gitcred.CommandWithToken(ctx, "git", "push", "-u", "origin", "mirage")
+	if err != nil {
+		return tempRepoName, nil, fmt.Errorf("metamon: configure push auth: %w", err)
+	}
+	pushCmd.Dir = tmpDir
+	if err := pushCmd.Run(); err != nil {
 		return tempRepoName, nil, fmt.Errorf("metamon: push failed: %w", err)
 	}
 

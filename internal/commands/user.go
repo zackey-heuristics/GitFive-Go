@@ -146,7 +146,7 @@ func NewUserCmd() *cobra.Command {
 
 			// XRAY analysis
 			fmt.Println("\nIDENTITIES UNMASKING")
-			results, err := analysis.XrayAnalyze(ctx, r.Creds.Token, r.Target.Username, r.Target.ID, r.Target.Repos)
+			results, err := analysis.XrayAnalyze(ctx, r.Target.Username, r.Target.ID, r.Target.Repos)
 			if err != nil {
 				fmt.Printf("[!] XRAY failed: %v\n", err)
 			} else {

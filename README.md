@@ -64,8 +64,6 @@ Create one at <https://github.com/settings/tokens?type=beta> with the following 
 
 All other permissions can be left at "No access". Fine-grained PATs require an expiration date (max 1 year); GitFive-Go warns when the token is within 30 days of expiry, and you must regenerate it before then.
 
-> **Note**: the token is currently embedded in `git clone` / `git push` URLs as `https://<token>:x-oauth-basic@github.com/...`, which exposes it to local process listings (`ps`) and shell history. This is a known issue tracked in [#6](https://github.com/zackey-heuristics/GitFive-Go/issues/6). Run GitFive-Go on a single-user host you trust until #6 is fixed.
-
 Documentation: <https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token>
 
 ### On-disk state
