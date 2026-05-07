@@ -165,6 +165,56 @@ func TestCommandWithToken_NoTokenInArgsOrEnv(t *testing.T) {
 	}
 }
 
+func TestCommandWithToken_DisablesCredentialHelpers(t *testing.T) {
+	// Regression guard for PR #15 review: git's credential resolution
+	// consults `credential.helper` BEFORE falling through to GIT_ASKPASS.
+	// On a machine with osxkeychain / manager / libsecret cached creds for
+	// github.com, those would silently authenticate as the wrong identity.
+	// CommandWithToken must inject `-c credential.helper=` to clear the
+	// helper list for the duration of the invocation.
+	cmd, err := CommandWithToken(context.Background(), "git", "clone",
+		"https://github.com/example/repo", t.TempDir())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var dashCIdx, helperIdx, cloneIdx = -1, -1, -1
+	for i, a := range cmd.Args {
+		switch {
+		case a == "-c" && dashCIdx == -1:
+			dashCIdx = i
+		case a == "credential.helper=" && helperIdx == -1:
+			helperIdx = i
+		case a == "clone" && cloneIdx == -1:
+			cloneIdx = i
+		}
+	}
+	if dashCIdx == -1 {
+		t.Fatalf("`-c` not present in args: %v", cmd.Args)
+	}
+	if helperIdx != dashCIdx+1 {
+		t.Errorf("expected `credential.helper=` immediately after `-c`, got args: %v", cmd.Args)
+	}
+	if cloneIdx <= helperIdx {
+		t.Errorf("subcommand `clone` must come after the credential override; args: %v", cmd.Args)
+	}
+}
+
+func TestCommandWithToken_NonGitNameNotInjected(t *testing.T) {
+	// The credential.helper override is git-specific and would be
+	// rejected as an unknown flag by other binaries. Confirm we only
+	// inject it when name == "git".
+	cmd, err := CommandWithToken(context.Background(), "bash", "-c", "echo hi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, a := range cmd.Args {
+		if a == "credential.helper=" {
+			t.Errorf("credential.helper= injected into non-git command: %v", cmd.Args)
+		}
+	}
+}
+
 func TestCommandWithToken_NoEmbeddedCredentialURL(t *testing.T) {
 	// Regression guard: even if a future caller passes a URL with an
 	// embedded basic-auth segment by mistake (the exact pattern Issue #6

@@ -68,12 +68,27 @@ func writeToken(w io.Writer, creds *auth.Credentials) error {
 // with GIT_ASKPASS pointing at this binary. The token is NOT placed in the
 // returned cmd's Args or Env; the askpass child loads it from creds.m.
 //
+// When `name` is "git", the args are prefixed with `-c credential.helper=`
+// to disable any system/global/local credential helper for this invocation.
+// Without that, git's credential resolution would consult cached helpers
+// (osxkeychain, manager, libsecret, cache, etc.) BEFORE falling through to
+// GIT_ASKPASS, so on a multi-account machine git could authenticate as a
+// different identity than the one whose token we just configured.
+//
 // Callers are expected to additionally set `cmd.Dir` if needed and capture
 // stdout/stderr; this function only handles the credential plumbing.
 func CommandWithToken(ctx context.Context, name string, args ...string) (*exec.Cmd, error) {
 	selfPath, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("locate self for GIT_ASKPASS: %w", err)
+	}
+
+	if name == "git" {
+		// Prepend rather than append so the override sits before the
+		// subcommand (clone/push/etc), matching standard `git -c k=v <cmd>`
+		// usage. Setting `credential.helper` to the empty string clears
+		// the helper list inherited from system/global/local config.
+		args = append([]string{"-c", "credential.helper="}, args...)
 	}
 
 	cmd := exec.CommandContext(ctx, name, args...)
